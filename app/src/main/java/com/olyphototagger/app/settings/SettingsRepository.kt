@@ -26,6 +26,7 @@ class SettingsRepository(
         val DAWARICH_API_TOKEN_IV = stringPreferencesKey("dawarich_api_token_iv")
         val GAP_THRESHOLD_MINUTES = intPreferencesKey("gap_threshold_minutes")
         val LAST_CAMERA_OFFSET_SECONDS = intPreferencesKey("last_camera_offset_seconds")
+        val LAST_DCIM_ROOT_URI = stringPreferencesKey("last_dcim_root_uri")
     }
 
     val dawarichConfig: Flow<DawarichConfig?> = context.settingsDataStore.data.map { prefs ->
@@ -79,6 +80,18 @@ class SettingsRepository(
 
     suspend fun saveLastCameraOffsetSeconds(totalSeconds: Int) {
         context.settingsDataStore.edit { prefs -> prefs[Keys.LAST_CAMERA_OFFSET_SECONDS] = totalSeconds }
+    }
+
+    /** The last DCIM root the user granted access to — a persisted SAF tree Uri string,
+     *  so the Home screen can offer to reuse it instead of picking again every time. The
+     *  permission grant itself is persisted separately by the OS via
+     *  takePersistableUriPermission(); this is just which one to default to. */
+    val lastDcimRootUri: Flow<String?> = context.settingsDataStore.data.map { prefs ->
+        prefs[Keys.LAST_DCIM_ROOT_URI]
+    }
+
+    suspend fun saveLastDcimRootUri(uriString: String) {
+        context.settingsDataStore.edit { prefs -> prefs[Keys.LAST_DCIM_ROOT_URI] = uriString }
     }
 
     companion object {
