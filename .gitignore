@@ -34,3 +34,8 @@ key.properties
 /native/src/
 /native/build/
 /native/out/
+
+# Real camera photos for local manual testing only — never commit actual photos to a
+# repo headed for a public F-Droid release. See RealRawGpsWriteInstrumentedTest's class
+# doc for how these get used.
+/SamplePhotos/
