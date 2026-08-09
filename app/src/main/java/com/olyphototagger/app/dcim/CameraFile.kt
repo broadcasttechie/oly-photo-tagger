@@ -22,9 +22,9 @@ data class CameraFile(
     val extension: String get() = displayName.substringAfterLast('.', "").uppercase()
 
     val kind: PhotoKind
-        get() = when (extension) {
-            "JPG", "JPEG" -> PhotoKind.JPEG
-            "ORF" -> PhotoKind.RAW
+        get() = when {
+            extension == "JPG" || extension == "JPEG" -> PhotoKind.JPEG
+            RawFormats.isRaw(extension) -> PhotoKind.RAW
             else -> PhotoKind.OTHER
         }
 }

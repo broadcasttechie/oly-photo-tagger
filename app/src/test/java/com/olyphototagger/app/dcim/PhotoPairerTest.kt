@@ -83,6 +83,18 @@ class PhotoPairerTest {
     }
 
     @Test
+    fun `pairs a non-Olympus RAW format with its JPEG the same way as ORF`() {
+        // App is tested against Olympus ORF but isn't limited to it — any RAW format
+        // ExifTool supports pairs the same way. Canon here as a representative other.
+        val result = PhotoPairer.pair(listOf(file("IMG_0001.JPG"), file("IMG_0001.CR3")))
+
+        assertEquals(1, result.pairs.size)
+        val pair = result.pairs.single()
+        assertTrue(pair.isComplete)
+        assertEquals(PhotoKind.RAW, pair.raw?.kind)
+    }
+
+    @Test
     fun `extension and base name casing does not affect pairing`() {
         val result = PhotoPairer.pair(listOf(file("p8090001.jpg"), file("P8090001.orf")))
 
