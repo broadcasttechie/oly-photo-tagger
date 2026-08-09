@@ -1,0 +1,60 @@
+name: native (perl + exiftool)
+
+on:
+  workflow_dispatch:
+    inputs:
+      abis:
+        description: "Space-separated ABIs to build, or 'all'"
+        required: false
+        default: arm64-v8a
+  push:
+    paths:
+      - "native/**"
+      - ".github/workflows/native.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qq -y --no-install-recommends \
+            curl gpg gnupg make patch xz-utils ca-certificates unzip git python3 \
+            binutils gcc libc6-dev libdigest-sha-perl
+
+      - name: Install pinned Android NDK
+        run: |
+          set -euo pipefail
+          . native/PINS
+          curl -fsSL -o /tmp/ndk.zip \
+            "https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip"
+          echo "${NDK_LINUX_SHA1}  /tmp/ndk.zip" | sha1sum -c -
+          unzip -q /tmp/ndk.zip -d /opt
+          echo "ANDROID_NDK_HOME=/opt/android-ndk-${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Build
+        env:
+          SOURCE_DATE_EPOCH: "1735689600"
+        run: |
+          set -euo pipefail
+          abis="${{ github.event.inputs.abis }}"
+          abis="${abis:-arm64-v8a}"
+          if [[ "${abis}" == "all" ]]; then
+            native/build.sh all
+          else
+            for abi in ${abis}; do
+              native/build.sh "${abi}"
+            done
+            native/build.sh assets
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-out
+          path: native/out/
+          retention-days: 14
