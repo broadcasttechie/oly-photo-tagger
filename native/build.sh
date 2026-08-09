@@ -96,8 +96,11 @@ fetch_perl() {
 fetch_exiftool() {
     local tarball="${SRC_DIR}/Image-ExifTool-${EXIFTOOL_VERSION}.tar.gz"
     if [[ ! -f "${tarball}" ]]; then
+        # exiftool.org no longer hosts the tarball directly (only the checksums
+        # page) — the actual download has moved to SourceForge. Verified this
+        # still serves a file matching the SHA256 exiftool.org publishes.
         curl -fsSL -o "${tarball}" \
-            "https://exiftool.org/Image-ExifTool-${EXIFTOOL_VERSION}.tar.gz"
+            "https://sourceforge.net/projects/exiftool/files/Image-ExifTool-${EXIFTOOL_VERSION}.tar.gz/download"
     fi
     verify_sha256 "${tarball}" "${EXIFTOOL_TARBALL_SHA256}"
 }
