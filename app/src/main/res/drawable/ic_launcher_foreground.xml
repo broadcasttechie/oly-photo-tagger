@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simple camera + pin glyph placeholder -->
+    <group android:scaleX="0.5" android:scaleY="0.5" android:translateX="27" android:translateY="27">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M54,20L44,20L38,28L24,28C21.8,28 20,29.8 20,32L20,76C20,78.2 21.8,80 24,80L84,80C86.2,80 88,78.2 88,76L88,32C88,29.8 86.2,28 84,28L70,28L64,20L54,20ZM54,40C63.9,40 72,48.1 72,58C72,67.9 63.9,76 54,76C44.1,76 36,67.9 36,58C36,48.1 44.1,40 54,40ZM54,48C48.5,48 44,52.5 44,58C44,63.5 48.5,68 54,68C59.5,68 64,63.5 64,58C64,52.5 59.5,48 54,48Z" />
+    </group>
+</vector>
