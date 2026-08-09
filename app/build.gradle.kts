@@ -6,6 +6,13 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Sourced from native/PINS so the on-device extractor (AssetExtractor) and the
+// native build pipeline that produces assets/perl5.tar can never drift apart.
+val nativePins: Map<String, String> = rootProject.file("native/PINS").readLines()
+    .map { it.trim() }
+    .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
+    .associate { line -> line.substringBefore("=").trim() to line.substringAfter("=").trim() }
+
 android {
     namespace = "com.olyphototagger.app"
     compileSdk = 35
@@ -18,6 +25,11 @@ android {
         versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField(
+            "int",
+            "PERL5_ASSET_VERSION",
+            nativePins.getValue("PERL5_ASSET_VERSION")
+        )
     }
 
     buildTypes {
@@ -38,6 +50,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

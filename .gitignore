@@ -28,3 +28,9 @@ key.properties
 
 # Log Files
 *.log
+
+# native/ build scratch — see native/README.md. out/ is produced by CI and
+# copied into app/src/main/jniLibs + assets, not committed here directly.
+/native/src/
+/native/build/
+/native/out/

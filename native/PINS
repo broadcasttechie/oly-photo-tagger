@@ -1,0 +1,48 @@
+# Pinned upstream versions and integrity hashes for the native build.
+#
+# This file is sourced by native/build.sh and the GitHub Actions workflow.
+# Every byte that ends up in app/src/main/jniLibs and app/src/main/assets/perl5.tar
+# is traceable back to one of the artifacts pinned here.
+#
+# When bumping a version: also update the SHA256 below from the upstream-published
+# checksum file. Never trust a download without checking it.
+
+# Perl interpreter source (from https://www.cpan.org/src/5.0/)
+# SHA256 from https://www.cpan.org/src/5.0/sha256.txt
+# Pinned to 5.38.4 (LTS). 5.40.x triggers a duplicate-symbol link failure
+# under perl-cross 1.6.4's --no-dynaloader --all-static mode; revisit when
+# perl-cross issues a release that supports 5.40 cleanly in static mode.
+PERL_VERSION=5.38.4
+PERL_TARBALL_SHA256=fb888accf8b50b5180e91166e5153608be294c57c19878e95f7659c1f1f12758
+
+# Perl release-signing key fingerprint (Perl Authors / pumpking).
+# Public key fetched from https://keys.openpgp.org/ during build.
+PERL_GPG_KEY_FINGERPRINT=39B23F3FB68DA1A47BE145C48BA4112F2A2E50DE
+
+# perl-cross (https://github.com/arsv/perl-cross)
+# Pinned to a release tag, fetched as a git submodule under native/perl-cross/.
+PERL_CROSS_TAG=1.6.4
+
+# ExifTool source (https://exiftool.org/Image-ExifTool-${EXIFTOOL_VERSION}.tar.gz)
+# SHA256 from https://exiftool.org/checksums-${EXIFTOOL_VERSION}.txt
+# NOTE: ExifTool releases are NOT GPG-signed by Phil Harvey upstream.
+# Trust here is anchored on (a) the SHA256 published on exiftool.org over TLS,
+# and (b) this checksum being committed to git so any change is reviewable.
+# NOTE: exiftool.org only retains a checksums file for the current release, so
+# unlike PERL_TARBALL_SHA256 below, this pin can't stay on an old version
+# indefinitely without the verification link going stale. Verified live
+# 2026-08-09 directly against exiftool.org over TLS.
+EXIFTOOL_VERSION=13.59
+EXIFTOOL_TARBALL_SHA256=668ea3acececb7235fbd0f4900e72d5f12c9b07e5c778fd36cb1e9b5828fd65a
+
+# Android NDK (https://developer.android.com/ndk/downloads)
+# Google publishes SHA1 (not SHA256) for NDK downloads — verified live
+# 2026-08-09 against developer.android.com. r26d has since aged out of the
+# supported-versions list; pinned to r27d (current LTS as of this writing)
+# instead of chasing a deprecated version's checksum.
+NDK_VERSION=r27d
+NDK_LINUX_SHA1=22105e410cf29afcf163760cc95522b9fb981121
+
+# Asset version: bump when assets/perl5.tar layout or contents change.
+# AssetExtractor uses this to decide whether to re-extract on launch.
+PERL5_ASSET_VERSION=1
