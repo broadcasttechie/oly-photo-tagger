@@ -30,6 +30,22 @@ android {
             "PERL5_ASSET_VERSION",
             nativePins.getValue("PERL5_ASSET_VERSION")
         )
+
+        ndk {
+            // Only arm64-v8a has been built via CI so far (native/build.sh all covers
+            // armeabi-v7a/x86_64/x86 too; not yet run). Restricting here avoids shipping
+            // an APK that silently lacks the exiftool binaries for other ABIs.
+            abiFilters += "arm64-v8a"
+        }
+    }
+
+    packaging {
+        jniLibs {
+            // libperl.so is exec'd via ProcessBuilder, not dlopen'd — it must land as a
+            // real executable file under nativeLibraryDir, not stay page-aligned inside
+            // the APK zip (AGP's default since native libs stopped needing extraction).
+            useLegacyPackaging = true
+        }
     }
 
     buildTypes {
