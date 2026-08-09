@@ -34,3 +34,9 @@ Room (change log), DataStore (settings). minSdk 26, target/compile SDK 35.
 
 Open in Android Studio, or `./gradlew assembleDebug` with a JDK 17+ and the Android SDK
 installed.
+
+## License
+
+[GPL-3.0-or-later](LICENSE). The app is intended for distribution via
+[F-Droid](https://f-droid.org); all dependencies are FOSS and no proprietary services are
+used.
