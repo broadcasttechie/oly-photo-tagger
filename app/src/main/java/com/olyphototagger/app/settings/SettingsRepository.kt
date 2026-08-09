@@ -2,6 +2,7 @@ package com.olyphototagger.app.settings
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -23,6 +24,8 @@ class SettingsRepository(
         val DAWARICH_BASE_URL = stringPreferencesKey("dawarich_base_url")
         val DAWARICH_API_TOKEN_CIPHERTEXT = stringPreferencesKey("dawarich_api_token_ciphertext")
         val DAWARICH_API_TOKEN_IV = stringPreferencesKey("dawarich_api_token_iv")
+        val GAP_THRESHOLD_MINUTES = intPreferencesKey("gap_threshold_minutes")
+        val LAST_CAMERA_OFFSET_SECONDS = intPreferencesKey("last_camera_offset_seconds")
     }
 
     val dawarichConfig: Flow<DawarichConfig?> = context.settingsDataStore.data.map { prefs ->
@@ -52,5 +55,33 @@ class SettingsRepository(
             prefs.remove(Keys.DAWARICH_API_TOKEN_CIPHERTEXT)
             prefs.remove(Keys.DAWARICH_API_TOKEN_IV)
         }
+    }
+
+    /** Max time gap GeoInterpolator will bridge between track points, rather than skip and flag. */
+    val gapThresholdMinutes: Flow<Int> = context.settingsDataStore.data.map { prefs ->
+        prefs[Keys.GAP_THRESHOLD_MINUTES] ?: DEFAULT_GAP_THRESHOLD_MINUTES
+    }
+
+    suspend fun saveGapThresholdMinutes(minutes: Int) {
+        require(minutes > 0) { "Gap threshold must be positive, was $minutes" }
+        context.settingsDataStore.edit { prefs -> prefs[Keys.GAP_THRESHOLD_MINUTES] = minutes }
+    }
+
+    /**
+     * The camera clock offset from the last completed workflow run, so the Home screen can
+     * default to it rather than making the user re-enter it every time. Null before the
+     * first run has ever completed — the UI falls back to the phone's current local offset
+     * in that case.
+     */
+    val lastCameraOffsetSeconds: Flow<Int?> = context.settingsDataStore.data.map { prefs ->
+        prefs[Keys.LAST_CAMERA_OFFSET_SECONDS]
+    }
+
+    suspend fun saveLastCameraOffsetSeconds(totalSeconds: Int) {
+        context.settingsDataStore.edit { prefs -> prefs[Keys.LAST_CAMERA_OFFSET_SECONDS] = totalSeconds }
+    }
+
+    companion object {
+        const val DEFAULT_GAP_THRESHOLD_MINUTES = 5
     }
 }

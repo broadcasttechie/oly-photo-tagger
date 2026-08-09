@@ -35,3 +35,13 @@ data class PairWriteResult(
     val jpegResult: GpsExifWriteResult?,
     val rawResult: GpsExifWriteResult?
 )
+
+/** Output of [GeotagOrchestrator.preScan] — counts only, no network call, no writes. */
+data class PreScanSummary(
+    val needsTagging: Int,
+    val alreadyTagged: Int,
+    val noTimestamp: Int,
+    val outsideDateRange: Int,
+    val ignoredFiles: Int,
+    val conflicts: Int
+)

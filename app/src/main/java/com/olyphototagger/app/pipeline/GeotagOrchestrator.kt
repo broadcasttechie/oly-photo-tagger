@@ -7,6 +7,7 @@ import com.olyphototagger.app.dawarich.DawarichClient
 import com.olyphototagger.app.dcim.CameraFile
 import com.olyphototagger.app.dcim.DcimScanResult
 import com.olyphototagger.app.dcim.DcimScanner
+import com.olyphototagger.app.dcim.PairingResult
 import com.olyphototagger.app.dcim.PhotoPair
 import com.olyphototagger.app.dcim.PhotoPairer
 import com.olyphototagger.app.dcim.identityKey
@@ -52,6 +53,61 @@ class GeotagOrchestrator(
         dateRange: ClosedRange<Instant>? = null,
         includeAlreadyTagged: Boolean = false
     ): ScanResult {
+        val c = classify(dcimRoot, assumedOffsetForNaiveTimestamps, dateRange, includeAlreadyTagged)
+
+        if (c.included.isEmpty()) {
+            return ScanResult(emptyList(), c.excluded, c.pairing.ignored, c.pairing.conflicts, c.scan::resolve)
+        }
+
+        val start = c.included.minOf { it.second }
+        val end = c.included.maxOf { it.second }
+        val track = dawarichClient.fetchTrackPoints(
+            start.minus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES),
+            end.plus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES)
+        )
+
+        val matches = c.included.map { (pair, timestamp) ->
+            ProposedMatch(pair, timestamp, geoInterpolator.match(timestamp, track))
+        }
+
+        return ScanResult(matches, c.excluded, c.pairing.ignored, c.pairing.conflicts, c.scan::resolve)
+    }
+
+    /**
+     * A quick "how much is there to do" count for the Home screen's optional prescan
+     * action — reuses the same cache-first classification as [scanForMatches] but skips
+     * the Dawarich fetch and interpolation entirely, since a UI showing counts has no
+     * reason to hit the network.
+     */
+    suspend fun preScan(
+        dcimRoot: DocumentFile,
+        assumedOffsetForNaiveTimestamps: ZoneOffset,
+        dateRange: ClosedRange<Instant>? = null
+    ): PreScanSummary {
+        val c = classify(dcimRoot, assumedOffsetForNaiveTimestamps, dateRange, includeAlreadyTagged = false)
+        return PreScanSummary(
+            needsTagging = c.included.size,
+            alreadyTagged = c.excluded.count { it.reason == ExcludeReason.ALREADY_TAGGED },
+            noTimestamp = c.excluded.count { it.reason == ExcludeReason.NO_TIMESTAMP },
+            outsideDateRange = c.excluded.count { it.reason == ExcludeReason.OUTSIDE_DATE_RANGE },
+            ignoredFiles = c.pairing.ignored.size,
+            conflicts = c.pairing.conflicts.size
+        )
+    }
+
+    private data class Classification(
+        val scan: DcimScanResult,
+        val pairing: PairingResult,
+        val included: List<Pair<PhotoPair, Instant>>,
+        val excluded: List<ExcludedPair>
+    )
+
+    private suspend fun classify(
+        dcimRoot: DocumentFile,
+        assumedOffsetForNaiveTimestamps: ZoneOffset,
+        dateRange: ClosedRange<Instant>?,
+        includeAlreadyTagged: Boolean
+    ): Classification {
         val scan = dcimScanner.scan(dcimRoot)
         val pairing = PhotoPairer.pair(scan.files)
 
@@ -68,22 +124,7 @@ class GeotagOrchestrator(
             }
         }
 
-        if (included.isEmpty()) {
-            return ScanResult(emptyList(), excluded, pairing.ignored, pairing.conflicts, scan::resolve)
-        }
-
-        val start = included.minOf { it.second }
-        val end = included.maxOf { it.second }
-        val track = dawarichClient.fetchTrackPoints(
-            start.minus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES),
-            end.plus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES)
-        )
-
-        val matches = included.map { (pair, timestamp) ->
-            ProposedMatch(pair, timestamp, geoInterpolator.match(timestamp, track))
-        }
-
-        return ScanResult(matches, excluded, pairing.ignored, pairing.conflicts, scan::resolve)
+        return Classification(scan, pairing, included, excluded)
     }
 
     /** Writes a confirmed match's coordinates to both files in its pair (whichever are present). */
