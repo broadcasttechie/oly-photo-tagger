@@ -41,9 +41,13 @@ sealed interface RenameTailOutcome {
  * backup) or the finished result (under its real name) — never the "deleted, not yet
  * renamed" window a plain delete-then-rename leaves if interrupted.
  *
- * [renameTempIntoPlace] and [deleteBackup] are exposed as their own functions, not private
- * to [swap], specifically so [IncompleteWriteRecoverer]'s "complete tagging" recovery
- * action can reuse this exact tested tail instead of reimplementing it.
+ * [renameOriginalToBackup], [renameTempIntoPlace], and [deleteBackup] are exposed as their
+ * own functions, not private to [swap], for two reasons: [IncompleteWriteRecoverer]'s
+ * "complete tagging"/"restore original" actions reuse [renameTempIntoPlace] and
+ * [deleteBackup] instead of reimplementing them, and tests need to stop this sequence
+ * partway through — after [renameOriginalToBackup] but before [renameTempIntoPlace] — to
+ * reproduce exactly the on-disk state a real crash in that window would leave, using this
+ * exact production code path rather than a hand-reconstructed equivalent.
  */
 object SafeFileSwap {
 
@@ -56,7 +60,7 @@ object SafeFileSwap {
         }
 
         val expectedLength = temp.length()
-        if (!original.renameTo(backupName)) {
+        if (!renameOriginalToBackup(original, backupName)) {
             return SwapResult.BackupRenameFailed("Could not rename $originalName to $backupName")
         }
 
@@ -71,6 +75,9 @@ object SafeFileSwap {
         val deleted = deleteBackup(parent.findFile(backupName))
         return SwapResult.Success(strayBackupFileName = if (deleted) null else backupName)
     }
+
+    /** Renames [original] to [backupName] in place. */
+    fun renameOriginalToBackup(original: DocumentFile, backupName: String): Boolean = original.renameTo(backupName)
 
     /**
      * Renames [temp] to [finalName] within [parent], then re-checks via a *fresh*
