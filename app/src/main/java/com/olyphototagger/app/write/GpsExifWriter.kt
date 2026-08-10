@@ -20,16 +20,23 @@ import java.time.Instant
  * either the untouched original or an orphaned `.tmp` — never a corrupted real filename.
  *
  * Two write paths, chosen by format:
- *  - JPEG/PNG/WebP ([GpsWriteSupport]) go straight through AndroidX ExifInterface against
- *    the SAF temp file's writable file descriptor.
- *  - RAW formats ExifTool documents write support for ([RawFormats]) can't be written via
- *    ExifInterface at all (confirmed from its source: saveAttributes() only supports
- *    those three formats) and can't be handed to perl/exiftool as a content:// URI either
- *    (perl needs a real filesystem path) — so the original is staged to a real scratch
- *    file, exiftool writes it there, and the result is copied into the SAF temp file
- *    before the same verify/delete/rename sequence takes over. Everything after "how do
- *    the right bytes end up in the temp file" is identical regardless of format, since
- *    reading GPS back for verification is fully supported for both.
+ *  - JPEG and RAW formats ExifTool documents write support for ([RawFormats]) both go
+ *    through exiftool. Not just because RAW *can't* go through AndroidX ExifInterface
+ *    (confirmed from its source: saveAttributes() only supports JPEG/PNG/WebP) — JPEG is
+ *    routed here deliberately too. The whole point of this app is to mirror as closely as
+ *    possible what the camera and Olympus's own OI.Share app do, so a tagged photo looks
+ *    like the camera did it. AndroidX ExifInterface doesn't patch a JPEG's existing EXIF in
+ *    place; it rebuilds the APP1 segment from its own internal tag model on save, and
+ *    confirmed against real before/after samples (2026-08-10), that drops
+ *    InteropIFD:InteropVersion and adds ImageWidth/ImageHeight that OI.Share's own write
+ *    never touches. exiftool's patch-in-place approach doesn't have that problem — verified
+ *    byte-identical to OI.Share's own RAW writes, and now used for JPEG for the same reason.
+ *    Since perl can't read content:// SAF URIs directly, the original is staged to a real
+ *    scratch file, exiftool writes it there, and the result is copied into the SAF temp
+ *    file before the same verify/delete/rename sequence takes over.
+ *  - PNG/WebP ([GpsWriteSupport]) — never a real camera output format, so "mirror the
+ *    camera" doesn't apply — still go straight through AndroidX ExifInterface against the
+ *    SAF temp file's writable file descriptor, unchanged.
  *
  * Anything outside both lists — including RAW formats ExifTool can only read, like 3FR —
  * is routed to [GpsExifWriteResult.UnsupportedFormat] without ever being touched.
@@ -52,10 +59,11 @@ class GpsExifWriter(
         val extension = originalName.substringAfterLast('.', "")
         val mimeType = original.type
 
-        val useExifTool = RawFormats.isWritable(extension)
-        if (!useExifTool && !GpsWriteSupport.isSupportedForWriting(mimeType)) {
+        val isRawWritable = RawFormats.isWritable(extension)
+        if (!isRawWritable && !GpsWriteSupport.isSupportedForWriting(mimeType)) {
             return@withContext GpsExifWriteResult.UnsupportedFormat(mimeType)
         }
+        val useExifTool = isRawWritable || mimeType == "image/jpeg"
 
         val parent = original.parentFile
             ?: return@withContext GpsExifWriteResult.Failed("No parent folder for $originalName")
@@ -82,7 +90,7 @@ class GpsExifWriter(
 
         try {
             if (useExifTool) {
-                writeRawViaExifTool(original.uri, temp.uri, extension, latitude, longitude, altitudeMeters)
+                writeViaExifTool(original.uri, temp.uri, extension, latitude, longitude, altitudeMeters)
             } else {
                 copyBytes(original.uri, temp.uri)
                 writeGpsAttributes(temp.uri, latitude, longitude, altitudeMeters)
@@ -117,9 +125,10 @@ class GpsExifWriter(
     /**
      * Stages [sourceUri] to a real file (perl can't read content:// URIs), runs exiftool
      * against it, then copies the result into [tempUri]. The scratch file always gets
-     * cleaned up, success or failure.
+     * cleaned up, success or failure. Used for both JPEG and RAW — see the class doc for why
+     * JPEG goes through exiftool rather than AndroidX ExifInterface.
      */
-    private suspend fun writeRawViaExifTool(
+    private suspend fun writeViaExifTool(
         sourceUri: Uri,
         tempUri: Uri,
         extension: String,
