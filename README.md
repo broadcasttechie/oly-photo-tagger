@@ -25,6 +25,14 @@ The camera mounts over USB as plain Mass Storage. The app:
 - Interrupted writes leave either the untouched original or an orphaned `.tmp` — never a
   corrupted file
 
+## Known limitations
+
+See [`docs/known-limitations.md`](docs/known-limitations.md) — currently just one:
+OM Image Share doesn't show RAW files this app tags as geotagged (JPEG is unaffected,
+and the RAW's GPS data itself is complete and correct everywhere else). Root cause
+confirmed; not fixed, by deliberate choice, since a real fix trades away exiftool's
+maturity for hand-rolled binary format surgery over a cosmetic-only gap.
+
 ## Stack
 
 Kotlin, Jetpack Compose, Material 3, Ktor client (Dawarich API), AndroidX ExifInterface,
