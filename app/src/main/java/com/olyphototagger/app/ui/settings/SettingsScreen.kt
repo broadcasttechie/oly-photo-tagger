@@ -27,8 +27,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.olyphototagger.app.ui.theme.OlyPhotoTaggerTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,6 +45,28 @@ fun SettingsScreen(
         viewModel.events.collect { message -> snackbarHostState.showSnackbar(message) }
     }
 
+    SettingsScreenContent(
+        uiState = uiState,
+        snackbarHostState = snackbarHostState,
+        onBack = onBack,
+        onBaseUrlChange = viewModel::setBaseUrl,
+        onApiTokenChange = viewModel::setApiToken,
+        onGapThresholdChange = viewModel::setGapThresholdMinutes,
+        onSave = viewModel::save
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsScreenContent(
+    uiState: SettingsUiState,
+    snackbarHostState: SnackbarHostState,
+    onBack: () -> Unit,
+    onBaseUrlChange: (String) -> Unit,
+    onApiTokenChange: (String) -> Unit,
+    onGapThresholdChange: (String) -> Unit,
+    onSave: () -> Unit
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -72,7 +96,7 @@ fun SettingsScreen(
 
             OutlinedTextField(
                 value = uiState.dawarichBaseUrl,
-                onValueChange = viewModel::setBaseUrl,
+                onValueChange = onBaseUrlChange,
                 label = { Text("Base URL") },
                 placeholder = { Text("dawarich.example.com") },
                 singleLine = true,
@@ -81,7 +105,7 @@ fun SettingsScreen(
 
             OutlinedTextField(
                 value = uiState.dawarichApiToken,
-                onValueChange = viewModel::setApiToken,
+                onValueChange = onApiTokenChange,
                 label = { Text("API token") },
                 placeholder = { Text(if (uiState.hasExistingToken) "Saved — enter a new one to replace" else "Paste your API token") },
                 singleLine = true,
@@ -94,7 +118,7 @@ fun SettingsScreen(
 
             OutlinedTextField(
                 value = uiState.gapThresholdMinutes,
-                onValueChange = viewModel::setGapThresholdMinutes,
+                onValueChange = onGapThresholdChange,
                 label = { Text("Max gap between GPS points (minutes)") },
                 supportingText = { Text("If the nearest GPS points bracketing a photo are further apart than this, it's skipped and flagged rather than guessed at.") },
                 singleLine = true,
@@ -103,7 +127,7 @@ fun SettingsScreen(
             )
 
             Button(
-                onClick = viewModel::save,
+                onClick = onSave,
                 enabled = !uiState.isSaving,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -114,5 +138,34 @@ fun SettingsScreen(
                 Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
             }
         }
+    }
+}
+
+@Preview(showBackground = true, name = "Empty")
+@Composable
+private fun SettingsScreenEmptyPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        SettingsScreenContent(
+            uiState = SettingsUiState(gapThresholdMinutes = "5"),
+            snackbarHostState = remember { SnackbarHostState() },
+            onBack = {}, onBaseUrlChange = {}, onApiTokenChange = {}, onGapThresholdChange = {}, onSave = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Configured")
+@Composable
+private fun SettingsScreenConfiguredPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        SettingsScreenContent(
+            uiState = SettingsUiState(
+                dawarichBaseUrl = "https://dawarich.home.example.com",
+                hasExistingToken = true,
+                gapThresholdMinutes = "5",
+                saveMessage = "Settings saved"
+            ),
+            snackbarHostState = remember { SnackbarHostState() },
+            onBack = {}, onBaseUrlChange = {}, onApiTokenChange = {}, onGapThresholdChange = {}, onSave = {}
+        )
     }
 }

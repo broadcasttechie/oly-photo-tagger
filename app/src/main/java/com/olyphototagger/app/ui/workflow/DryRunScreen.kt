@@ -20,6 +20,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.olyphototagger.app.geotag.GeoMatch
@@ -27,6 +28,8 @@ import com.olyphototagger.app.pipeline.ExcludeReason
 import com.olyphototagger.app.pipeline.ExcludedPair
 import com.olyphototagger.app.pipeline.ProposedMatch
 import com.olyphototagger.app.pipeline.ScanResult
+import com.olyphototagger.app.ui.PreviewFixtures
+import com.olyphototagger.app.ui.theme.OlyPhotoTaggerTheme
 
 /**
  * Shows exactly what a real run would do — and, just as importantly, exactly what it
@@ -42,8 +45,20 @@ fun DryRunScreen(
     onConfirmRun: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val scanResult = uiState.scanResult
+    DryRunScreenContent(
+        scanResult = uiState.scanResult,
+        onBack = onBack,
+        onConfirmRun = { viewModel.startRun(); onConfirmRun() }
+    )
+}
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DryRunScreenContent(
+    scanResult: ScanResult?,
+    onBack: () -> Unit,
+    onConfirmRun: () -> Unit
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -100,7 +115,7 @@ fun DryRunScreen(
             }
 
             Button(
-                onClick = { viewModel.startRun(); onConfirmRun() },
+                onClick = onConfirmRun,
                 enabled = willWrite.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -175,4 +190,20 @@ private fun ExcludedRow(excluded: ExcludedPair) {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+}
+
+@Preview(showBackground = true, name = "Mixed results")
+@Composable
+private fun DryRunScreenPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        DryRunScreenContent(scanResult = PreviewFixtures.scanResult, onBack = {}, onConfirmRun = {})
+    }
+}
+
+@Preview(showBackground = true, name = "No scan yet")
+@Composable
+private fun DryRunScreenEmptyPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        DryRunScreenContent(scanResult = null, onBack = {}, onConfirmRun = {})
+    }
 }

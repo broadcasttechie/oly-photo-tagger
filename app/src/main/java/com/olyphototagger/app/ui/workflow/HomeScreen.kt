@@ -47,9 +47,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.olyphototagger.app.pipeline.PreScanSummary
+import com.olyphototagger.app.ui.PreviewFixtures
+import com.olyphototagger.app.ui.theme.OlyPhotoTaggerTheme
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
@@ -90,6 +93,37 @@ fun HomeScreen(
         }
     }
 
+    HomeScreenContent(
+        uiState = uiState,
+        snackbarHostState = snackbarHostState,
+        onPickFolder = { pickFolder.launch(null) },
+        onNavigateToSettings = onNavigateToSettings,
+        onPreScan = { scope.launch { viewModel.runPreScan() } },
+        onDateRangeChange = viewModel::setDateRange,
+        onLoadLocalOffset = viewModel::loadLocalOffset,
+        onAdjustOffsetHours = viewModel::adjustOffsetHours,
+        onDryRun = { scope.launch { if (viewModel.runDryScan()) onNavigateToDryRun() } }
+    )
+}
+
+/**
+ * The actual Home screen UI, taking plain state and callbacks rather than the
+ * ViewModel directly — lets @Preview drive it with fixture data instead of a real
+ * GeotagWorkflowViewModel, which would need live DataStore/Room access to construct.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HomeScreenContent(
+    uiState: WorkflowUiState,
+    snackbarHostState: SnackbarHostState,
+    onPickFolder: () -> Unit,
+    onNavigateToSettings: () -> Unit,
+    onPreScan: () -> Unit,
+    onDateRangeChange: (Instant?, Instant?) -> Unit,
+    onLoadLocalOffset: () -> Unit,
+    onAdjustOffsetHours: (Int) -> Unit,
+    onDryRun: () -> Unit
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -122,30 +156,30 @@ fun HomeScreen(
         ) {
             FolderCard(
                 displayName = uiState.rootDisplayName,
-                onPick = { pickFolder.launch(null) }
+                onPick = onPickFolder
             )
 
             PreScanCard(
                 enabled = uiState.canScan,
                 summary = uiState.preScanSummary,
-                onPreScan = { scope.launch { viewModel.runPreScan() } }
+                onPreScan = onPreScan
             )
 
             DateRangeCard(
                 start = uiState.dateRangeStart,
                 end = uiState.dateRangeEnd,
-                onStartChange = { viewModel.setDateRange(it, uiState.dateRangeEnd) },
-                onEndChange = { viewModel.setDateRange(uiState.dateRangeStart, it) }
+                onStartChange = { onDateRangeChange(it, uiState.dateRangeEnd) },
+                onEndChange = { onDateRangeChange(uiState.dateRangeStart, it) }
             )
 
             CameraOffsetCard(
                 offsetSeconds = uiState.cameraOffsetSeconds,
-                onLoadLocal = viewModel::loadLocalOffset,
-                onAdjustHours = viewModel::adjustOffsetHours
+                onLoadLocal = onLoadLocalOffset,
+                onAdjustHours = onAdjustOffsetHours
             )
 
             Button(
-                onClick = { scope.launch { if (viewModel.runDryScan()) onNavigateToDryRun() } },
+                onClick = onDryRun,
                 enabled = uiState.canScan,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -159,6 +193,55 @@ fun HomeScreen(
                 }
             }
         }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun HomeScreenEmptyPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        HomeScreenContent(
+            uiState = WorkflowUiState(),
+            snackbarHostState = remember { SnackbarHostState() },
+            onPickFolder = {}, onNavigateToSettings = {}, onPreScan = {},
+            onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {}, onDryRun = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Populated")
+@Composable
+private fun HomeScreenPopulatedPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        HomeScreenContent(
+            uiState = WorkflowUiState(
+                rootUri = android.net.Uri.parse("content://fake/DCIM"),
+                rootDisplayName = "DCIM",
+                cameraOffsetSeconds = 3600,
+                preScanSummary = PreviewFixtures.preScanSummary
+            ),
+            snackbarHostState = remember { SnackbarHostState() },
+            onPickFolder = {}, onNavigateToSettings = {}, onPreScan = {},
+            onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {}, onDryRun = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Dark", uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun HomeScreenDarkPreview() {
+    OlyPhotoTaggerTheme(darkTheme = true, dynamicColor = false) {
+        HomeScreenContent(
+            uiState = WorkflowUiState(
+                rootUri = android.net.Uri.parse("content://fake/DCIM"),
+                rootDisplayName = "DCIM",
+                cameraOffsetSeconds = 3600,
+                preScanSummary = PreviewFixtures.preScanSummary
+            ),
+            snackbarHostState = remember { SnackbarHostState() },
+            onPickFolder = {}, onNavigateToSettings = {}, onPreScan = {},
+            onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {}, onDryRun = {}
+        )
     }
 }
 

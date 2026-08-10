@@ -17,9 +17,12 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.olyphototagger.app.pipeline.PairWriteResult
+import com.olyphototagger.app.ui.PreviewFixtures
+import com.olyphototagger.app.ui.theme.OlyPhotoTaggerTheme
 import com.olyphototagger.app.write.GpsExifWriteResult
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -29,8 +32,15 @@ fun SummaryScreen(
     onDone: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val results = uiState.runResults.orEmpty()
+    SummaryScreenContent(results = uiState.runResults.orEmpty(), onDone = onDone)
+}
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SummaryScreenContent(
+    results: List<PairWriteResult>,
+    onDone: () -> Unit
+) {
     val succeeded = results.count { it.isFullySuccessful }
     val needsAttention = results.filterNot { it.isFullySuccessful }
 
@@ -101,4 +111,20 @@ private fun DetailLine(label: String, result: GpsExifWriteResult) {
                 "as \"${result.tempFileName}\" instead of its normal name — rename it back manually."
     }
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+}
+
+@Preview(showBackground = true, name = "All succeeded")
+@Composable
+private fun SummaryScreenSuccessPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        SummaryScreenContent(results = PreviewFixtures.runResultsAllSucceeded, onDone = {})
+    }
+}
+
+@Preview(showBackground = true, name = "Needs attention")
+@Composable
+private fun SummaryScreenAttentionPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        SummaryScreenContent(results = PreviewFixtures.runResultsNeedingAttention, onDone = {})
+    }
 }

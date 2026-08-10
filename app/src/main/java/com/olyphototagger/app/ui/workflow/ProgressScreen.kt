@@ -21,8 +21,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.olyphototagger.app.ui.PreviewFixtures
+import com.olyphototagger.app.ui.theme.OlyPhotoTaggerTheme
 
 /**
  * Purely observational — the write batch is already running in the ViewModel's own
@@ -50,10 +53,19 @@ fun ProgressScreen(
         viewModel.events.collect { message -> snackbarHostState.showSnackbar(message) }
     }
 
+    ProgressScreenContent(runProgress = uiState.runProgress, snackbarHostState = snackbarHostState)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProgressScreenContent(
+    runProgress: RunProgress?,
+    snackbarHostState: SnackbarHostState
+) {
     // The write itself survives navigation regardless (it runs in the ViewModel's own
     // scope), but letting the user navigate back to a "confirm run" screen while a batch
     // is actively writing is a confusing state worth just not allowing.
-    BackHandler(enabled = uiState.runProgress != null) {}
+    BackHandler(enabled = runProgress != null) {}
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Writing GPS Tags") }) },
@@ -72,7 +84,7 @@ fun ProgressScreen(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            val progress = uiState.runProgress
+            val progress = runProgress
             if (progress == null) {
                 Text("Starting…", style = MaterialTheme.typography.titleMedium)
             } else {
@@ -97,5 +109,21 @@ fun ProgressScreen(
                 modifier = Modifier.padding(top = 24.dp)
             )
         }
+    }
+}
+
+@Preview(showBackground = true, name = "In progress")
+@Composable
+private fun ProgressScreenPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        ProgressScreenContent(runProgress = PreviewFixtures.runProgress, snackbarHostState = remember { SnackbarHostState() })
+    }
+}
+
+@Preview(showBackground = true, name = "Starting")
+@Composable
+private fun ProgressScreenStartingPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        ProgressScreenContent(runProgress = null, snackbarHostState = remember { SnackbarHostState() })
     }
 }
