@@ -35,10 +35,6 @@ object GpsWriteSupport {
         abs(actualLatitude - expectedLatitude) < toleranceDegrees &&
             abs(actualLongitude - expectedLongitude) < toleranceDegrees
 
-    /** Matches [com.olyphototagger.app.dcim.CameraFile.extension]'s uppercased convention. */
-    const val TEMP_EXTENSION = "TMP"
-    const val BACKUP_EXTENSION = "BAK"
-
     /**
      * Centralized here — not inlined separately in [SafeFileSwap], [GpsExifWriter], and the
      * incomplete-write detector — because those three each need to agree on this exact
@@ -47,4 +43,46 @@ object GpsWriteSupport {
      */
     fun tempNameFor(originalName: String): String = "$originalName.tmp"
     fun backupNameFor(originalName: String): String = "$originalName.bak"
+
+    /**
+     * Recognizes a `.tmp`/`.bak` artifact and recovers the original name it belongs to,
+     * tolerating a real quirk confirmed on-device (2026-08-11, genuine crash simulation
+     * against a real SAF-backed folder — not the raw-`File`-backed `DocumentFile`s this
+     * write path is otherwise JVM-unit-tested against): `DocumentFile.createFile()` on a
+     * real SAF tree silently appends its own extra extension matching the given MIME type
+     * whenever the requested display name doesn't already end in one it recognizes — asking
+     * for `tempNameFor("P8080743.JPG")` ("P8080743.JPG.tmp") with mimeType image/jpeg
+     * actually creates "P8080743.JPG.tmp.jpg" on disk. A naive check for "does this file's
+     * *last* extension equal tmp/bak" — which is what a plain [tempNameFor]/[backupNameFor]
+     * round-trip assumes — silently fails to recognize that file at all, which is a real
+     * safety problem, not just cosmetic: the orphaned temp file holds fully-written,
+     * already-verified tagged data, and a caller that can't find it has no way to offer
+     * "finish tagging" as a recovery option, or to clean it up on a later write attempt to
+     * the same file — it's just permanently invisible clutter.
+     *
+     * (`renameTo()` does not have this quirk — confirmed the `.bak` side, produced via
+     * rename rather than createFile, always keeps its exact requested name. Both are matched
+     * the same way here regardless, since nothing about relying on that holding on every
+     * provider is guaranteed.)
+     *
+     * Matches a bare "tmp"/"bak" dot-segment anywhere in [displayName] after the first, not
+     * just as the literal final extension — the *first* such segment is used, since SAF only
+     * ever appends *after* what this app asks for, never before. This handles the idealized
+     * "X.tmp" form (what this app's own JVM tests produce, since real-`File`-backed
+     * `DocumentFile`s don't have this quirk) and the real on-device "X.tmp.jpg" form
+     * identically.
+     */
+    fun parseArtifactName(displayName: String): ArtifactName? {
+        val segments = displayName.split('.')
+        val markerIndex = (1 until segments.size).firstOrNull { i ->
+            segments[i].equals("tmp", ignoreCase = true) || segments[i].equals("bak", ignoreCase = true)
+        } ?: return null
+        return ArtifactName(
+            recoveredName = segments.subList(0, markerIndex).joinToString("."),
+            isTemp = segments[markerIndex].equals("tmp", ignoreCase = true)
+        )
+    }
 }
+
+/** Result of [GpsWriteSupport.parseArtifactName]. [isTemp] is false when the artifact is a backup. */
+data class ArtifactName(val recoveredName: String, val isTemp: Boolean)

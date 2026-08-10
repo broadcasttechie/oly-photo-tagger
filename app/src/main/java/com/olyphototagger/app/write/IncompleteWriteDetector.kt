@@ -69,10 +69,6 @@ object IncompleteWriteDetector {
 
         for (file in files) {
             val (recoveredName, role) = recoveredNameAndRole(file)
-            // CameraFile.baseName strips only the last dot, so a temp/backup file's
-            // baseName is already the exact original displayName (e.g. "P8080743.JPG.tmp"
-            // -> "P8080743.JPG") — not the JPEG's own baseName ("P8080743"), which would
-            // never match.
             val key = file.folderName to recoveredName.uppercase()
             val group = groups.getOrPut(key) { Group() }
             group.recoveredName = group.recoveredName ?: recoveredName
@@ -100,10 +96,9 @@ object IncompleteWriteDetector {
         }
     }
 
-    private fun recoveredNameAndRole(file: CameraFile): Pair<String, Role> = when (file.extension) {
-        GpsWriteSupport.TEMP_EXTENSION -> file.baseName to Role.TEMP
-        GpsWriteSupport.BACKUP_EXTENSION -> file.baseName to Role.BACKUP
-        else -> file.displayName to Role.ORIGINAL
+    private fun recoveredNameAndRole(file: CameraFile): Pair<String, Role> {
+        val artifact = GpsWriteSupport.parseArtifactName(file.displayName) ?: return file.displayName to Role.ORIGINAL
+        return artifact.recoveredName to if (artifact.isTemp) Role.TEMP else Role.BACKUP
     }
 
     private fun classify(hasOriginal: Boolean, hasTemp: Boolean, hasBackup: Boolean): IncompleteWriteClassification? = when {

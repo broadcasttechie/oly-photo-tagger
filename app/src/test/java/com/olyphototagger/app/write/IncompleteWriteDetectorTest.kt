@@ -144,4 +144,29 @@ class IncompleteWriteDetectorTest {
 
         assertTrue(result.isEmpty())
     }
+
+    @Test
+    fun `a real SAF-mutated temp name is still recognized as AwaitingChoice, not missed as BackupOnly`() {
+        // Direct regression test for a real bug found via genuine on-device crash
+        // simulation (2026-08-11): a real SAF-backed DocumentFile.createFile() renamed the
+        // requested "P8080743.JPG.tmp" to "P8080743.JPG.tmp.jpg" on disk (appending its own
+        // recognized extension for the image/jpeg mimeType). Before the parseArtifactName
+        // fix, this file's last extension was "JPG", not "TMP", so it fell through to
+        // Role.ORIGINAL, formed its own single-file group that classify() correctly
+        // discards as "not a recovery case", and vanished — leaving the detector unable to
+        // see it at all. The scan then reported this case as BackupOnly (only the .bak
+        // visible), silently losing the ability to offer "Finish tagging" and permanently
+        // orphaning the already-verified tagged temp file. It must classify exactly the
+        // same as the idealized "P8080743.JPG.tmp" form.
+        val result = IncompleteWriteDetector.detect(
+            listOf(file("P8080743.JPG.tmp.jpg"), file("P8080743.JPG.bak"))
+        )
+
+        val write = result.single()
+        assertEquals(IncompleteWriteClassification.AwaitingChoice, write.classification)
+        assertEquals("P8080743.JPG", write.recoveredName)
+        assertEquals(null, write.original)
+        assertEquals("P8080743.JPG.tmp.jpg", write.temp?.displayName)
+        assertEquals("P8080743.JPG.bak", write.backup?.displayName)
+    }
 }

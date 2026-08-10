@@ -97,7 +97,19 @@ class GpsExifWriter(
 
         val tempName = GpsWriteSupport.tempNameFor(originalName)
         // Clear out any orphan left by a previous interrupted run before starting fresh.
-        parent.findFile(tempName)?.delete()
+        // Can't just look up the exact requested tempName: a real SAF-backed
+        // DocumentFile.createFile() (confirmed on-device, see parseArtifactName's doc)
+        // silently appends its own extra extension onto whatever name this app asks for,
+        // so the orphan actually left behind may be named e.g. "P8080743.JPG.tmp.jpg" —
+        // scan for anything that recovers back to this original instead of trusting the
+        // literal name round-trips.
+        parent.listFiles().forEach { sibling ->
+            val name = sibling.name ?: return@forEach
+            val artifact = GpsWriteSupport.parseArtifactName(name)
+            if (artifact != null && artifact.isTemp && artifact.recoveredName.equals(originalName, ignoreCase = true)) {
+                sibling.delete()
+            }
+        }
 
         val temp = parent.createFile(mimeType ?: "application/octet-stream", tempName)
             ?: return@withContext GpsExifWriteResult.Failed("Could not create temp file $tempName")
@@ -137,7 +149,11 @@ class GpsExifWriter(
                 is SwapResult.BackupRenameFailed ->
                     GpsExifWriteResult.Failed("Could not rename original to a backup: ${swapResult.reason}")
                 is SwapResult.FinalRenameFailed, is SwapResult.FinalRenameUnverified ->
-                    GpsExifWriteResult.NeedsRecovery(tempName, backupName)
+                    // temp.name (the live handle's real current name), not the asked-for
+                    // tempName string — SAF can silently rename what it's given on create
+                    // (see parseArtifactName's doc), so tempName may not be what's actually
+                    // on disk.
+                    GpsExifWriteResult.NeedsRecovery(temp.name ?: tempName, backupName)
             }
         } catch (e: IOException) {
             GpsExifWriteResult.Failed("I/O error: ${e.message}", e)
