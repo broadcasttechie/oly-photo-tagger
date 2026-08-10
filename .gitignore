@@ -43,3 +43,8 @@ key.properties
 # repo headed for a public F-Droid release. See RealRawGpsWriteInstrumentedTest's class
 # doc for how these get used.
 /SamplePhotos/
+
+# Real GPS track logs for local manual testing only — same reasoning as SamplePhotos/:
+# real personal location history, never committed to a repo headed for public F-Droid
+# release.
+/SampleGpsData/
