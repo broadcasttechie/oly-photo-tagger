@@ -74,7 +74,7 @@ class MainWorkflowEndToEndInstrumentedTest {
             dcimScanner = DcimScanner(),
             exifStatusReader = PhotoExifStatusReader(context.contentResolver),
             geoTagCacheDao = AppDatabase.getInstance(context).geoTagCacheDao(),
-            dawarichClient = DawarichClient(createDawarichHttpClient(), baseUrl!!, token!!),
+            gpsSource = DawarichClient(createDawarichHttpClient(), baseUrl!!, token!!),
             geoInterpolator = GeoInterpolator(maxBracketGap = Duration.ofMinutes(30)),
             gpsExifWriter = GpsExifWriter(context.contentResolver, ExifToolInvoker(context), context.cacheDir)
         )
