@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -67,7 +68,8 @@ fun HomeScreen(
     viewModel: GeotagWorkflowViewModel,
     onNavigateToDryRun: () -> Unit,
     onNavigateToSettings: () -> Unit,
-    onNavigateToGpsSources: () -> Unit
+    onNavigateToGpsSources: () -> Unit,
+    onNavigateToRecovery: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -102,6 +104,7 @@ fun HomeScreen(
         snackbarHostState = snackbarHostState,
         onPickFolder = { pickFolder.launch(null) },
         onNavigateToSettings = onNavigateToSettings,
+        onNavigateToRecovery = onNavigateToRecovery,
         onPreScan = { scope.launch { viewModel.runPreScan() } },
         onDateRangeChange = viewModel::setDateRange,
         onLoadLocalOffset = viewModel::loadLocalOffset,
@@ -122,6 +125,7 @@ private fun HomeScreenContent(
     snackbarHostState: SnackbarHostState,
     onPickFolder: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToRecovery: () -> Unit,
     onPreScan: () -> Unit,
     onDateRangeChange: (Instant?, Instant?) -> Unit,
     onLoadLocalOffset: () -> Unit,
@@ -158,6 +162,10 @@ private fun HomeScreenContent(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (uiState.pendingRecoveries.isNotEmpty()) {
+                RecoveryBanner(count = uiState.pendingRecoveries.size, onClick = onNavigateToRecovery)
+            }
+
             FolderCard(
                 displayName = uiState.rootDisplayName,
                 onPick = onPickFolder
@@ -207,7 +215,7 @@ private fun HomeScreenEmptyPreview() {
         HomeScreenContent(
             uiState = WorkflowUiState(),
             snackbarHostState = remember { SnackbarHostState() },
-            onPickFolder = {}, onNavigateToSettings = {}, onPreScan = {},
+            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
             onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {}, onDryRun = {}
         )
     }
@@ -225,7 +233,7 @@ private fun HomeScreenPopulatedPreview() {
                 preScanSummary = PreviewFixtures.preScanSummary
             ),
             snackbarHostState = remember { SnackbarHostState() },
-            onPickFolder = {}, onNavigateToSettings = {}, onPreScan = {},
+            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
             onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {}, onDryRun = {}
         )
     }
@@ -243,9 +251,52 @@ private fun HomeScreenDarkPreview() {
                 preScanSummary = PreviewFixtures.preScanSummary
             ),
             snackbarHostState = remember { SnackbarHostState() },
-            onPickFolder = {}, onNavigateToSettings = {}, onPreScan = {},
+            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
             onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {}, onDryRun = {}
         )
+    }
+}
+
+@Preview(showBackground = true, name = "Needs recovery")
+@Composable
+private fun HomeScreenRecoveryPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        HomeScreenContent(
+            uiState = WorkflowUiState(
+                rootUri = android.net.Uri.parse("content://fake/DCIM"),
+                rootDisplayName = "DCIM",
+                pendingRecoveries = PreviewFixtures.pendingRecoveries
+            ),
+            snackbarHostState = remember { SnackbarHostState() },
+            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
+            onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {}, onDryRun = {}
+        )
+    }
+}
+
+/**
+ * The dismissible flow's manual re-entry point: nothing forces the user here, but it's
+ * impossible to miss and always leads straight to [RecoveryScreen] whenever
+ * [WorkflowUiState.pendingRecoveries] is non-empty.
+ */
+@Composable
+private fun RecoveryBanner(count: Int, onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                "$count photo${if (count == 1) "" else "s"} need attention",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer
+            )
+            Text(
+                "An earlier write was interrupted — nothing was lost, but these need a quick decision.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer
+            )
+        }
     }
 }
 

@@ -7,4 +7,5 @@ object AppRoute {
     const val SUMMARY = "summary"
     const val SETTINGS = "settings"
     const val GPS_SOURCES = "gpsSources"
+    const val RECOVERY = "recovery"
 }

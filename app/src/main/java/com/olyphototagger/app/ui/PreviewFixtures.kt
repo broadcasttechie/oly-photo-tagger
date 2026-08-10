@@ -12,6 +12,8 @@ import com.olyphototagger.app.pipeline.ScanResult
 import com.olyphototagger.app.ui.settings.GpxFileUiState
 import com.olyphototagger.app.ui.workflow.RunProgress
 import com.olyphototagger.app.write.GpsExifWriteResult
+import com.olyphototagger.app.write.IncompleteWrite
+import com.olyphototagger.app.write.IncompleteWriteClassification
 import java.time.Duration
 import java.time.Instant
 
@@ -133,6 +135,41 @@ internal object PreviewFixtures {
             pointCount = 630,
             earliest = Instant.parse("2026-08-09T09:15:00Z"),
             latest = Instant.parse("2026-08-09T17:45:00Z")
+        )
+    )
+
+    private fun recoveryFile(name: String) = CameraFile(
+        uriString = "content://fake/100OLYMP/$name",
+        displayName = name,
+        folderName = "100OLYMP",
+        sizeBytes = 12_000_000,
+        lastModified = Instant.parse("2026-08-08T13:24:56Z")
+    )
+
+    val pendingRecoveries = listOf(
+        IncompleteWrite(
+            folderName = "100OLYMP",
+            recoveredName = "P8080743.JPG",
+            original = null,
+            temp = recoveryFile("P8080743.JPG.tmp"),
+            backup = recoveryFile("P8080743.JPG.bak"),
+            classification = IncompleteWriteClassification.AwaitingChoice
+        ),
+        IncompleteWrite(
+            folderName = "100OLYMP",
+            recoveredName = "P8080744.ORF",
+            original = recoveryFile("P8080744.ORF"),
+            temp = recoveryFile("P8080744.ORF.tmp"),
+            backup = null,
+            classification = IncompleteWriteClassification.StaleTempOnly
+        ),
+        IncompleteWrite(
+            folderName = "100OLYMP",
+            recoveredName = "P8080757.JPG",
+            original = recoveryFile("P8080757.JPG"),
+            temp = null,
+            backup = recoveryFile("P8080757.JPG.bak"),
+            classification = IncompleteWriteClassification.OriginalAndBackupPresent
         )
     )
 }

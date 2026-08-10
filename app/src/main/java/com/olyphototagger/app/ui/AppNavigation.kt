@@ -16,6 +16,7 @@ import com.olyphototagger.app.ui.workflow.DryRunScreen
 import com.olyphototagger.app.ui.workflow.GeotagWorkflowViewModel
 import com.olyphototagger.app.ui.workflow.HomeScreen
 import com.olyphototagger.app.ui.workflow.ProgressScreen
+import com.olyphototagger.app.ui.workflow.RecoveryScreen
 import com.olyphototagger.app.ui.workflow.SummaryScreen
 
 @Composable
@@ -44,7 +45,8 @@ fun AppNavigation(
                 viewModel = workflowViewModel,
                 onNavigateToDryRun = { navController.navigate(AppRoute.DRY_RUN) },
                 onNavigateToSettings = { navController.navigate(AppRoute.SETTINGS) },
-                onNavigateToGpsSources = { navController.navigate(AppRoute.GPS_SOURCES) }
+                onNavigateToGpsSources = { navController.navigate(AppRoute.GPS_SOURCES) },
+                onNavigateToRecovery = { navController.navigate(AppRoute.RECOVERY) }
             )
         }
         composable(AppRoute.DRY_RUN) {
@@ -93,6 +95,12 @@ fun AppNavigation(
             }
             GpsSourcesScreen(
                 viewModel = gpsSourcesViewModel,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable(AppRoute.RECOVERY) {
+            RecoveryScreen(
+                viewModel = workflowViewModel,
                 onBack = { navController.popBackStack() }
             )
         }
