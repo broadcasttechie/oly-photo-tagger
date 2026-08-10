@@ -14,8 +14,12 @@ import com.olyphototagger.app.exif.PhotoExifStatusReader
 import com.olyphototagger.app.exiftool.ExifToolInvoker
 import com.olyphototagger.app.geotag.GeoInterpolator
 import com.olyphototagger.app.geotag.GeoMatch
+import com.olyphototagger.app.geotag.GpsSource
+import com.olyphototagger.app.gpx.GpxTrackSource
 import com.olyphototagger.app.pipeline.GeotagOrchestrator
 import com.olyphototagger.app.pipeline.PairWriteResult
+import com.olyphototagger.app.settings.ActiveGpsSourceResolver
+import com.olyphototagger.app.settings.GpsSourceType
 import com.olyphototagger.app.settings.SettingsRepository
 import com.olyphototagger.app.write.GpsExifWriter
 import kotlinx.coroutines.channels.BufferOverflow
@@ -139,7 +143,7 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
         val orchestrator = buildOrchestrator()
         if (orchestrator == null) {
             _uiState.update { it.copy(isBusy = false, busyMessage = null) }
-            _events.tryEmit(MISSING_DAWARICH_CONFIG_MESSAGE)
+            _events.tryEmit(MISSING_GPS_SOURCE_MESSAGE)
             return false
         }
         return try {
@@ -157,12 +161,12 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
     suspend fun runDryScan(): Boolean {
         val root = _uiState.value.rootUri ?: return false
         _uiState.update {
-            it.copy(isBusy = true, busyMessage = "Matching photos against your Dawarich track…")
+            it.copy(isBusy = true, busyMessage = "Matching photos against your GPS track…")
         }
         val orchestrator = buildOrchestrator()
         if (orchestrator == null) {
             _uiState.update { it.copy(isBusy = false, busyMessage = null) }
-            _events.tryEmit(MISSING_DAWARICH_CONFIG_MESSAGE)
+            _events.tryEmit(MISSING_GPS_SOURCE_MESSAGE)
             return false
         }
         settingsRepository.saveLastCameraOffsetSeconds(_uiState.value.cameraOffsetSeconds)
@@ -199,7 +203,7 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
             }
             val orchestrator = buildOrchestrator()
             if (orchestrator == null) {
-                _events.tryEmit(MISSING_DAWARICH_CONFIG_MESSAGE)
+                _events.tryEmit(MISSING_GPS_SOURCE_MESSAGE)
                 return@launch
             }
 
@@ -242,15 +246,25 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
         return if (start != null && end != null) start..end else null
     }
 
-    // TODO(chunk 5): branch on the active GpsSourceType instead of hardcoding Dawarich.
     private suspend fun buildOrchestrator(): GeotagOrchestrator? {
-        val dawarichConfig = settingsRepository.dawarichConfig.first() ?: return null
+        val dawarichConfig = settingsRepository.dawarichConfig.first()
+        val activeSource = settingsRepository.activeGpsSource.first()
+        val resolved = ActiveGpsSourceResolver.resolve(activeSource, hasDawarichConfig = dawarichConfig != null)
+            ?: return null
+        val gpsSource: GpsSource = when (resolved) {
+            GpsSourceType.DAWARICH -> DawarichClient(
+                createDawarichHttpClient(),
+                requireNotNull(dawarichConfig).baseUrl,
+                dawarichConfig.apiToken
+            )
+            GpsSourceType.GPX -> GpxTrackSource(AppDatabase.getInstance(context).gpxTrackDao())
+        }
         val gapMinutes = settingsRepository.gapThresholdMinutes.first()
         return GeotagOrchestrator(
             dcimScanner = dcimScanner,
             exifStatusReader = exifStatusReader,
             geoTagCacheDao = AppDatabase.getInstance(context).geoTagCacheDao(),
-            gpsSource = DawarichClient(createDawarichHttpClient(), dawarichConfig.baseUrl, dawarichConfig.apiToken),
+            gpsSource = gpsSource,
             geoInterpolator = GeoInterpolator(maxBracketGap = Duration.ofMinutes(gapMinutes.toLong())),
             gpsExifWriter = gpsExifWriter
         )
@@ -261,6 +275,6 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
 
         // internal, not private: HomeScreen matches on this exact message to offer a
         // "Settings" action on the error snackbar rather than just a generic dismiss.
-        internal const val MISSING_DAWARICH_CONFIG_MESSAGE = "Set up your Dawarich connection in Settings first."
+        internal const val MISSING_GPS_SOURCE_MESSAGE = "Set up a GPS source in Settings first."
     }
 }

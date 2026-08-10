@@ -86,7 +86,7 @@ fun HomeScreen(
         viewModel.events.collect { message ->
             val result = snackbarHostState.showSnackbar(
                 message = message,
-                actionLabel = if (message == GeotagWorkflowViewModel.MISSING_DAWARICH_CONFIG_MESSAGE) "Settings" else null,
+                actionLabel = if (message == GeotagWorkflowViewModel.MISSING_GPS_SOURCE_MESSAGE) "Settings" else null,
                 duration = SnackbarDuration.Long
             )
             if (result == SnackbarResult.ActionPerformed) onNavigateToSettings()

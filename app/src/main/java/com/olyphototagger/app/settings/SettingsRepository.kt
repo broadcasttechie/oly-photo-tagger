@@ -27,6 +27,7 @@ class SettingsRepository(
         val GAP_THRESHOLD_MINUTES = intPreferencesKey("gap_threshold_minutes")
         val LAST_CAMERA_OFFSET_SECONDS = intPreferencesKey("last_camera_offset_seconds")
         val LAST_DCIM_ROOT_URI = stringPreferencesKey("last_dcim_root_uri")
+        val ACTIVE_GPS_SOURCE = stringPreferencesKey("active_gps_source")
     }
 
     val dawarichConfig: Flow<DawarichConfig?> = context.settingsDataStore.data.map { prefs ->
@@ -92,6 +93,21 @@ class SettingsRepository(
 
     suspend fun saveLastDcimRootUri(uriString: String) {
         context.settingsDataStore.edit { prefs -> prefs[Keys.LAST_DCIM_ROOT_URI] = uriString }
+    }
+
+    /** Which GPS source the user explicitly chose — null before they ever have (every
+     *  install predating this feature included). See [ActiveGpsSourceResolver] for how
+     *  that's turned into an actual decision. An unrecognized stored value (e.g. from a
+     *  future version's enum this build doesn't know about) maps to null rather than
+     *  throwing — treated the same as "never chosen". */
+    val activeGpsSource: Flow<GpsSourceType?> = context.settingsDataStore.data.map { prefs ->
+        prefs[Keys.ACTIVE_GPS_SOURCE]?.let { stored ->
+            runCatching { GpsSourceType.valueOf(stored) }.getOrNull()
+        }
+    }
+
+    suspend fun saveActiveGpsSource(type: GpsSourceType) {
+        context.settingsDataStore.edit { prefs -> prefs[Keys.ACTIVE_GPS_SOURCE] = type.name }
     }
 
     companion object {
