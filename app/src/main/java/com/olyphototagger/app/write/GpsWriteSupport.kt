@@ -34,4 +34,17 @@ object GpsWriteSupport {
     ): Boolean =
         abs(actualLatitude - expectedLatitude) < toleranceDegrees &&
             abs(actualLongitude - expectedLongitude) < toleranceDegrees
+
+    /** Matches [com.olyphototagger.app.dcim.CameraFile.extension]'s uppercased convention. */
+    const val TEMP_EXTENSION = "TMP"
+    const val BACKUP_EXTENSION = "BAK"
+
+    /**
+     * Centralized here — not inlined separately in [SafeFileSwap], [GpsExifWriter], and the
+     * incomplete-write detector — because those three each need to agree on this exact
+     * convention for crash recovery to work at all; a drift between them would silently
+     * break it.
+     */
+    fun tempNameFor(originalName: String): String = "$originalName.tmp"
+    fun backupNameFor(originalName: String): String = "$originalName.bak"
 }
