@@ -175,6 +175,10 @@ class GpsExifWriter(
             if (altitudeMeters != null) {
                 exif.setAltitude(altitudeMeters)
             }
+            // See GpsExifToolCommand's GPSStatus comment: Olympus's own apps/firmware
+            // only recognize a photo as geotagged when this is set, even though the
+            // lat/long alone are fully valid EXIF. Kept in sync with the RAW write path.
+            exif.setAttribute(ExifInterface.TAG_GPS_STATUS, ExifInterface.GPS_MEASUREMENT_IN_PROGRESS)
             exif.saveAttributes()
         }
     }

@@ -17,11 +17,21 @@ class GpsExifToolCommandTest {
                 "-GPSLatitudeRef=N",
                 "-GPSLongitude=2.2426000",
                 "-GPSLongitudeRef=W",
+                "-GPSStatus#=A",
                 "-overwrite_original",
                 "-m",
                 "/tmp/photo.orf"
             ),
             args
+        )
+    }
+
+    @Test
+    fun `always marks GPS status as active`() {
+        assertTrue(GpsExifToolCommand.build("/tmp/x.orf", 1.0, 1.0).contains("-GPSStatus#=A"))
+        assertTrue(
+            GpsExifToolCommand.build("/tmp/x.orf", 1.0, 1.0, altitudeMeters = 10.0)
+                .contains("-GPSStatus#=A")
         )
     }
 

@@ -36,6 +36,17 @@ object GpsExifToolCommand {
             add("-GPSAltitude=${decimal(abs(altitudeMeters))}")
             add("-GPSAltitudeRef=${if (altitudeMeters >= 0) "0" else "1"}")
         }
+        // 'A' = measurement active/in-progress, per the EXIF spec. Every coordinate this
+        // app writes comes from a real interpolated GPS fix, so this is always true — but
+        // it also turns out to matter beyond spec compliance: Olympus's own camera
+        // firmware and OM Image Share only show a photo as geotagged when this is set,
+        // even though the lat/long tags alone are fully valid and read correctly by every
+        // generic EXIF reader. Confirmed by diffing a sample OI.Share-tagged ORF against
+        // an untagged one — GPSStatus was the only unexplained tag-level difference.
+        // The `#` writes the raw 'A'/'V' value directly: plain `-GPSStatus=A` fails with
+        // "matches more than one PrintConv" and silently writes nothing at all — verified
+        // against a real ORF, not just assumed from exiftool's docs.
+        add("-GPSStatus#=A")
         add("-overwrite_original")
         add("-m") // ignore minor errors/warnings (exiftool convention)
         add(targetPath)
