@@ -1,5 +1,7 @@
 package com.olyphototagger.app.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -57,6 +59,12 @@ fun GpsSourcesScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // GPX has no single standard MIME type in the wild — "*/*" is deliberate; the
+    // parser is what actually validates the file, not the picker's filter.
+    val importGpxFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { viewModel.importGpxFile(it) }
+    }
+
     LaunchedEffect(Unit) {
         viewModel.events.collect { message -> snackbarHostState.showSnackbar(message) }
     }
@@ -69,7 +77,7 @@ fun GpsSourcesScreen(
         onBaseUrlChange = viewModel::setBaseUrl,
         onApiTokenChange = viewModel::setApiToken,
         onSaveDawarich = viewModel::saveDawarichConfig,
-        onImportGpxFile = viewModel::onImportGpxFileRequested,
+        onImportGpxFile = { importGpxFile.launch(arrayOf("*/*")) },
         onDeleteGpxFile = viewModel::deleteGpxFile
     )
 }

@@ -1,10 +1,13 @@
 package com.olyphototagger.app.ui.settings
 
 import android.app.Application
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.olyphototagger.app.cache.AppDatabase
 import com.olyphototagger.app.cache.GpxImportedFileEntity
+import com.olyphototagger.app.gpx.GpxImporter
 import com.olyphototagger.app.settings.GpsSourceType
 import com.olyphototagger.app.settings.SettingsRepository
 import kotlinx.coroutines.channels.BufferOverflow
@@ -21,8 +24,10 @@ import java.time.Instant
 
 class GpsSourcesViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val settingsRepository = SettingsRepository(getApplication())
-    private val gpxTrackDao = AppDatabase.getInstance(getApplication()).gpxTrackDao()
+    private val context get() = getApplication<Application>()
+    private val settingsRepository = SettingsRepository(context)
+    private val gpxTrackDao = AppDatabase.getInstance(context).gpxTrackDao()
+    private val gpxImporter = GpxImporter(gpxTrackDao)
 
     private val _uiState = MutableStateFlow(GpsSourcesUiState())
     val uiState: StateFlow<GpsSourcesUiState> = _uiState.asStateFlow()
@@ -107,11 +112,26 @@ class GpsSourcesViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    // The file picker itself lands in the next chunk — this just makes the entry point
-    // visible and gives the user a clear signal it isn't wired up yet, rather than a
-    // button that silently does nothing.
-    fun onImportGpxFileRequested() {
-        _events.tryEmit("GPX import is coming in the next update.")
+    fun importGpxFile(uri: Uri) {
+        val name = runCatching { DocumentFile.fromSingleUri(context, uri)?.name }.getOrNull() ?: "Imported GPX"
+        viewModelScope.launch {
+            val input = try {
+                context.contentResolver.openInputStream(uri)
+            } catch (e: Exception) {
+                _events.tryEmit("Could not open $name: ${e.message}")
+                return@launch
+            }
+            if (input == null) {
+                _events.tryEmit("Could not open $name")
+                return@launch
+            }
+            try {
+                val summary = input.use { gpxImporter.import(it, name) }
+                _events.tryEmit("Imported ${summary.pointCount} points from ${summary.displayName}")
+            } catch (e: Exception) {
+                _events.tryEmit(e.message ?: "Could not import $name")
+            }
+        }
     }
 }
 

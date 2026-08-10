@@ -3,6 +3,7 @@ package com.olyphototagger.app.gpx
 import com.olyphototagger.app.geotag.TrackPoint
 import org.w3c.dom.Element
 import org.w3c.dom.Node
+import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.time.Instant
 import javax.xml.parsers.DocumentBuilderFactory
@@ -29,7 +30,11 @@ import javax.xml.parsers.DocumentBuilderFactory
 object GpxParser {
 
     fun parse(input: InputStream): List<TrackPoint> {
-        val document = secureDocumentBuilderFactory().newDocumentBuilder().parse(input)
+        val bytes = input.readBytes()
+        require(!containsDoctypeDeclaration(bytes)) {
+            "GPX file contains a DOCTYPE declaration, which is not allowed"
+        }
+        val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(ByteArrayInputStream(bytes))
 
         val points = mutableListOf<TrackPoint>()
         val trkpts = document.getElementsByTagName("trkpt")
@@ -63,14 +68,16 @@ object GpxParser {
 
     /**
      * A GPX file can come from a share-intent (chunk 8) or an arbitrary file-picker
-     * selection — untrusted input. Disabling DOCTYPE outright is the standard,
-     * OWASP-recommended defense against XXE: it structurally rules out the whole attack
-     * class (custom entity definitions require a DOCTYPE), rather than trying to
-     * selectively disable individual entity-resolution features. No real GPX file needs
-     * a DOCTYPE, so this costs nothing functionally.
+     * selection — untrusted input. A DOCTYPE is how XXE attacks smuggle in external
+     * entity resolution, so it's rejected outright before the document ever reaches a
+     * parser, via a raw byte scan rather than a DOM parser feature flag: the
+     * `disallow-doctype-decl` feature name is Xerces-specific — supported by the
+     * desktop JVM parser this project's unit tests run against, but Android's bundled
+     * Expat-backed DocumentBuilderFactory throws ParserConfigurationException on that
+     * exact setFeature call, which meant every on-device GPX import failed even though
+     * the equivalent unit test passed happily on the desktop JVM. A byte-level scan
+     * works identically on both, and no real GPX file needs a DOCTYPE anyway.
      */
-    private fun secureDocumentBuilderFactory(): DocumentBuilderFactory =
-        DocumentBuilderFactory.newInstance().apply {
-            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-        }
+    private fun containsDoctypeDeclaration(bytes: ByteArray): Boolean =
+        String(bytes, Charsets.ISO_8859_1).contains("<!DOCTYPE", ignoreCase = true)
 }
