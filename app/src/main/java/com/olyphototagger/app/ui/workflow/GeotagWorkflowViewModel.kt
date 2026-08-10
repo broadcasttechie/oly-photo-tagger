@@ -23,6 +23,10 @@ import com.olyphototagger.app.settings.GpsSourceType
 import com.olyphototagger.app.settings.SettingsRepository
 import com.olyphototagger.app.dcim.PhotoPair
 import com.olyphototagger.app.write.GpsExifWriter
+import com.olyphototagger.app.write.IncompleteWrite
+import com.olyphototagger.app.write.IncompleteWriteScanner
+import com.olyphototagger.app.write.RecoveryActionResult
+import com.olyphototagger.app.write.RecoveryChoice
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,6 +55,7 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
     private val context get() = getApplication<Application>()
     private val settingsRepository = SettingsRepository(context)
     private val dcimScanner = DcimScanner()
+    private val incompleteWriteScanner = IncompleteWriteScanner(dcimScanner)
     private val exifStatusReader = PhotoExifStatusReader(context.contentResolver)
     private val gpsExifWriter = GpsExifWriter(
         context.contentResolver,
@@ -83,6 +88,11 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
                 if (stillGranted) {
                     val name = runCatching { DocumentFile.fromTreeUri(context, uri)?.name }.getOrNull()
                     _uiState.update { it.copy(rootUri = uri, rootDisplayName = name) }
+                    // The scenario this whole feature exists for: the app got killed
+                    // mid-write, and the user is reopening it — checked here, on cold
+                    // start with the restored root, not just when a folder is freshly
+                    // picked.
+                    checkForIncompleteWrites()
                 }
             }
         }
@@ -101,10 +111,15 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
                 preScanSummary = null,
                 scanResult = null,
                 deselectedPairKeys = emptySet(),
-                runResults = null
+                runResults = null,
+                // Stale results from whatever root was previously selected — a fresh
+                // check below will repopulate this for the new root.
+                pendingRecoveries = emptyList(),
+                incompleteWriteScanResult = null
             )
         }
         viewModelScope.launch { settingsRepository.saveLastDcimRootUri(uri.toString()) }
+        viewModelScope.launch { checkForIncompleteWrites() }
     }
 
     fun loadLocalOffset() = setCameraOffsetSeconds(currentLocalOffsetSeconds())
@@ -163,6 +178,43 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
             ?.map { it.pair.stableKey() }
             .orEmpty()
         _uiState.update { it.copy(deselectedPairKeys = if (selected) emptySet() else matchedKeys.toSet()) }
+    }
+
+    /**
+     * Checks the current root for artifacts an earlier interrupted write left behind —
+     * see [IncompleteWriteScanner]. Cheap (a folder listing + pure classification, no
+     * network/exiftool involved) so the busy flash is brief, but still uses the same
+     * busy-state pattern as [runPreScan]/[runDryScan] for consistency.
+     */
+    suspend fun checkForIncompleteWrites() {
+        val root = _uiState.value.rootUri ?: return
+        _uiState.update { it.copy(isBusy = true, busyMessage = "Checking for interrupted writes…") }
+        try {
+            val dcimRoot = requireNotNull(DocumentFile.fromTreeUri(context, root)) { "Could not open $root" }
+            val result = incompleteWriteScanner.scan(dcimRoot)
+            _uiState.update {
+                it.copy(isBusy = false, busyMessage = null, pendingRecoveries = result.items, incompleteWriteScanResult = result)
+            }
+        } catch (e: Exception) {
+            _uiState.update { it.copy(isBusy = false, busyMessage = null) }
+            _events.tryEmit("Could not check for interrupted writes: ${e.message}")
+        }
+    }
+
+    /** Applies [choice] to [item], resolving it, and removes it from [WorkflowUiState.pendingRecoveries] on success. */
+    suspend fun resolveIncompleteWrite(item: IncompleteWrite, choice: RecoveryChoice) {
+        val scanResult = _uiState.value.incompleteWriteScanResult
+        if (scanResult == null) {
+            _events.tryEmit("Could not resolve ${item.recoveredName}: no scan result to resolve it against.")
+            return
+        }
+        when (val result = incompleteWriteScanner.resolve(scanResult, item, choice)) {
+            RecoveryActionResult.Recovered -> {
+                _uiState.update { it.copy(pendingRecoveries = it.pendingRecoveries - item) }
+                _events.tryEmit("Resolved ${item.recoveredName}")
+            }
+            is RecoveryActionResult.ActionFailed -> _events.tryEmit("Could not resolve ${item.recoveredName}: ${result.reason}")
+        }
     }
 
     suspend fun runPreScan(): Boolean {

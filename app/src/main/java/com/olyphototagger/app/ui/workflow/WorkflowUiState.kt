@@ -5,6 +5,8 @@ import com.olyphototagger.app.dcim.PhotoPair
 import com.olyphototagger.app.pipeline.PairWriteResult
 import com.olyphototagger.app.pipeline.PreScanSummary
 import com.olyphototagger.app.pipeline.ScanResult
+import com.olyphototagger.app.write.IncompleteWrite
+import com.olyphototagger.app.write.IncompleteWriteScanResult
 import java.time.Instant
 
 data class RunProgress(val completed: Int, val total: Int, val currentAction: String)
@@ -24,6 +26,15 @@ data class RunProgress(val completed: Int, val total: Int, val currentAction: St
 data class WorkflowUiState(
     val rootUri: Uri? = null,
     val rootDisplayName: String? = null,
+    /** Interrupted writes found on the current root, awaiting an explicit recovery
+     *  choice — see IncompleteWriteScanner. Empty in the common case (no crash ever
+     *  happened). Dismissible by design: nothing here blocks the rest of the workflow,
+     *  since GpsExifWriter itself refuses to touch a file with an unresolved backup
+     *  regardless of whether this was ever seen or actioned. */
+    val pendingRecoveries: List<IncompleteWrite> = emptyList(),
+    /** Needed to resolve a pendingRecoveries item back to real files — see
+     *  IncompleteWriteScanner.resolve(). Null until checkForIncompleteWrites() has run. */
+    val incompleteWriteScanResult: IncompleteWriteScanResult? = null,
     val cameraOffsetSeconds: Int = 0,
     val dateRangeStart: Instant? = null,
     val dateRangeEnd: Instant? = null,
