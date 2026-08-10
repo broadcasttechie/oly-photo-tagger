@@ -10,8 +10,9 @@ The camera mounts over USB as plain Mass Storage. The app:
 1. Uses the Storage Access Framework to access the mounted camera card.
 2. Enumerates `DCIM/` for JPEG + `.ORF` files, treating RAW+JPEG pairs as one unit.
 3. Reads each photo's `DateTimeOriginal` EXIF timestamp.
-4. Fetches the matching GPS track from a self-hosted [Dawarich](https://dawarich.app)
-   instance (GPX import as fallback).
+4. Fetches the matching GPS track from whichever GPS source is active — a self-hosted
+   [Dawarich](https://dawarich.app) instance, or GPX files imported via a file picker or
+   share-intent (multiple imports pool together into one merged track).
 5. Interpolates lat/lon between bracketing track points, honoring a configurable max
    time-gap threshold (skip and flag rather than interpolate across large gaps).
 6. Writes GPS EXIF tags in place via a safe temp-file → verify → rename sequence.
@@ -36,7 +37,8 @@ maturity for hand-rolled binary format surgery over a cosmetic-only gap.
 ## Stack
 
 Kotlin, Jetpack Compose, Material 3, Ktor client (Dawarich API), AndroidX ExifInterface,
-Room (change log), DataStore (settings). minSdk 26, target/compile SDK 35.
+Room (change log, imported GPX tracks), DataStore (settings). minSdk 26, target/compile
+SDK 35.
 
 ## Building
 
