@@ -27,6 +27,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -34,6 +39,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,9 +67,27 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         uri?.let { viewModel.setRoot(it) }
+    }
+
+    // Errors were previously a Text buried at the bottom of a scrollable column — easy
+    // to miss unless already scrolled down. A Snackbar floats above the content and
+    // appears immediately regardless of scroll position. Collects viewModel.events (a
+    // SharedFlow) rather than keying off a state field: two failures with the same
+    // message in a row could otherwise conflate into what looks like no state change at
+    // all and silently drop the second notification.
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { message ->
+            val result = snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = if (message == GeotagWorkflowViewModel.MISSING_DAWARICH_CONFIG_MESSAGE) "Settings" else null,
+                duration = SnackbarDuration.Long
+            )
+            if (result == SnackbarResult.ActionPerformed) onNavigateToSettings()
+        }
     }
 
     Scaffold(
@@ -76,6 +100,16 @@ fun HomeScreen(
                     }
                 }
             )
+        },
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    actionColor = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
         }
     ) { padding ->
         Column(
@@ -123,14 +157,6 @@ fun HomeScreen(
                     CircularProgressIndicator(modifier = Modifier.size(20.dp))
                     Text(uiState.busyMessage.orEmpty(), style = MaterialTheme.typography.bodyMedium)
                 }
-            }
-
-            uiState.errorMessage?.let { message ->
-                Text(
-                    message,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium
-                )
             }
         }
     }

@@ -13,6 +13,12 @@ data class RunProgress(val completed: Int, val total: Int, val currentAction: St
  * it's genuinely one continuous workflow with accumulating state — not four independent
  * screens. Navigation between screens is driven by the UI layer (on a successful action,
  * the caller navigates); this state doesn't know which screen is currently showing.
+ *
+ * Errors are deliberately NOT part of this state — see [GeotagWorkflowViewModel.events].
+ * A one-shot notification like "this just failed" doesn't belong in a StateFlow: two
+ * failures with the same message in a row (state goes message -> null -> same message)
+ * can conflate into what looks like no change at all to a collector, silently dropping
+ * the second notification.
  */
 data class WorkflowUiState(
     val rootUri: Uri? = null,
@@ -22,7 +28,6 @@ data class WorkflowUiState(
     val dateRangeEnd: Instant? = null,
     val isBusy: Boolean = false,
     val busyMessage: String? = null,
-    val errorMessage: String? = null,
     val preScanSummary: PreScanSummary? = null,
     val scanResult: ScanResult? = null,
     val runProgress: RunProgress? = null,

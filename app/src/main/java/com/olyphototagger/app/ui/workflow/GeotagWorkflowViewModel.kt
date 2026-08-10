@@ -18,8 +18,12 @@ import com.olyphototagger.app.pipeline.GeotagOrchestrator
 import com.olyphototagger.app.pipeline.PairWriteResult
 import com.olyphototagger.app.settings.SettingsRepository
 import com.olyphototagger.app.write.GpsExifWriter
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -52,6 +56,14 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
     private val _uiState = MutableStateFlow(WorkflowUiState())
     val uiState: StateFlow<WorkflowUiState> = _uiState.asStateFlow()
 
+    // One-shot user-facing messages (errors, mainly) — a SharedFlow rather than part of
+    // WorkflowUiState because StateFlow only guarantees collectors see the latest value,
+    // not every distinct one. Two failures with the same text in a row can conflate away
+    // the second notification if a collector is a beat slow (see WorkflowUiState's doc).
+    // extraBufferCapacity + DROP_OLDEST keeps every emit() call here non-suspending.
+    private val _events = MutableSharedFlow<String>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val events: SharedFlow<String> = _events.asSharedFlow()
+
     init {
         viewModelScope.launch {
             val savedOffset = settingsRepository.lastCameraOffsetSeconds.first()
@@ -83,8 +95,7 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
                 rootDisplayName = name,
                 preScanSummary = null,
                 scanResult = null,
-                runResults = null,
-                errorMessage = null
+                runResults = null
             )
         }
         viewModelScope.launch { settingsRepository.saveLastDcimRootUri(uri.toString()) }
@@ -108,10 +119,6 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
-    fun dismissError() {
-        _uiState.update { it.copy(errorMessage = null) }
-    }
-
     /** Clears results from a previous run so the workflow can start over on the same root. */
     fun resetForNextRun() {
         _uiState.update {
@@ -119,8 +126,7 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
                 preScanSummary = null,
                 scanResult = null,
                 runProgress = null,
-                runResults = null,
-                errorMessage = null
+                runResults = null
             )
         }
     }
@@ -128,13 +134,12 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
     suspend fun runPreScan(): Boolean {
         val root = _uiState.value.rootUri ?: return false
         _uiState.update {
-            it.copy(isBusy = true, busyMessage = "Scanning for photos missing GPS tags…", errorMessage = null)
+            it.copy(isBusy = true, busyMessage = "Scanning for photos missing GPS tags…")
         }
         val orchestrator = buildOrchestrator()
         if (orchestrator == null) {
-            _uiState.update {
-                it.copy(isBusy = false, busyMessage = null, errorMessage = MISSING_DAWARICH_CONFIG_MESSAGE)
-            }
+            _uiState.update { it.copy(isBusy = false, busyMessage = null) }
+            _events.tryEmit(MISSING_DAWARICH_CONFIG_MESSAGE)
             return false
         }
         return try {
@@ -143,7 +148,8 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
             _uiState.update { it.copy(isBusy = false, busyMessage = null, preScanSummary = summary) }
             true
         } catch (e: Exception) {
-            _uiState.update { it.copy(isBusy = false, busyMessage = null, errorMessage = "Prescan failed: ${e.message}") }
+            _uiState.update { it.copy(isBusy = false, busyMessage = null) }
+            _events.tryEmit("Prescan failed: ${e.message}")
             false
         }
     }
@@ -151,13 +157,12 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
     suspend fun runDryScan(): Boolean {
         val root = _uiState.value.rootUri ?: return false
         _uiState.update {
-            it.copy(isBusy = true, busyMessage = "Matching photos against your Dawarich track…", errorMessage = null)
+            it.copy(isBusy = true, busyMessage = "Matching photos against your Dawarich track…")
         }
         val orchestrator = buildOrchestrator()
         if (orchestrator == null) {
-            _uiState.update {
-                it.copy(isBusy = false, busyMessage = null, errorMessage = MISSING_DAWARICH_CONFIG_MESSAGE)
-            }
+            _uiState.update { it.copy(isBusy = false, busyMessage = null) }
+            _events.tryEmit(MISSING_DAWARICH_CONFIG_MESSAGE)
             return false
         }
         settingsRepository.saveLastCameraOffsetSeconds(_uiState.value.cameraOffsetSeconds)
@@ -167,7 +172,8 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
             _uiState.update { it.copy(isBusy = false, busyMessage = null, scanResult = result) }
             true
         } catch (e: Exception) {
-            _uiState.update { it.copy(isBusy = false, busyMessage = null, errorMessage = "Scan failed: ${e.message}") }
+            _uiState.update { it.copy(isBusy = false, busyMessage = null) }
+            _events.tryEmit("Scan failed: ${e.message}")
             false
         }
     }
@@ -188,12 +194,12 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
         viewModelScope.launch {
             val scanResult = _uiState.value.scanResult
             if (scanResult == null) {
-                _uiState.update { it.copy(errorMessage = "Nothing to run — no dry-run scan yet.") }
+                _events.tryEmit("Nothing to run — no dry-run scan yet.")
                 return@launch
             }
             val orchestrator = buildOrchestrator()
             if (orchestrator == null) {
-                _uiState.update { it.copy(errorMessage = MISSING_DAWARICH_CONFIG_MESSAGE) }
+                _events.tryEmit(MISSING_DAWARICH_CONFIG_MESSAGE)
                 return@launch
             }
 
@@ -206,7 +212,7 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
             // never written, matched or not.
             val matches = scanResult.matches.filter { it.geoMatch is GeoMatch.Matched }
             _uiState.update {
-                it.copy(runProgress = RunProgress(0, matches.size, "Starting…"), runResults = null, errorMessage = null)
+                it.copy(runProgress = RunProgress(0, matches.size, "Starting…"), runResults = null)
             }
 
             val results = mutableListOf<PairWriteResult>()
@@ -251,6 +257,9 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
 
     companion object {
         private const val SECONDS_PER_HOUR = 3600
-        private const val MISSING_DAWARICH_CONFIG_MESSAGE = "Set up your Dawarich connection in Settings first."
+
+        // internal, not private: HomeScreen matches on this exact message to offer a
+        // "Settings" action on the error snackbar rather than just a generic dismiss.
+        internal const val MISSING_DAWARICH_CONFIG_MESSAGE = "Set up your Dawarich connection in Settings first."
     }
 }

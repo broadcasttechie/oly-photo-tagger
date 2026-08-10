@@ -4,8 +4,12 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.olyphototagger.app.settings.SettingsRepository
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -17,6 +21,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+
+    // See GeotagWorkflowViewModel.events' doc for why errors are a SharedFlow, not state.
+    private val _events = MutableSharedFlow<String>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val events: SharedFlow<String> = _events.asSharedFlow()
 
     init {
         viewModelScope.launch {
@@ -55,18 +63,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val state = _uiState.value
         val minutes = state.gapThresholdMinutes.toIntOrNull()
         if (minutes == null || minutes <= 0) {
-            _uiState.update { it.copy(errorMessage = "Gap threshold must be a positive number of minutes.") }
+            _events.tryEmit("Gap threshold must be a positive number of minutes.")
             return
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isSaving = true, errorMessage = null, saveMessage = null) }
+            _uiState.update { it.copy(isSaving = true, saveMessage = null) }
             try {
                 if (state.dawarichApiToken.isNotBlank()) {
                     if (state.dawarichBaseUrl.isBlank()) {
-                        _uiState.update {
-                            it.copy(isSaving = false, errorMessage = "Enter the Dawarich base URL too.")
-                        }
+                        _uiState.update { it.copy(isSaving = false) }
+                        _events.tryEmit("Enter the Dawarich base URL too.")
                         return@launch
                     }
                     settingsRepository.saveDawarichConfig(state.dawarichBaseUrl, state.dawarichApiToken)
@@ -81,7 +88,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isSaving = false, errorMessage = "Could not save: ${e.message}") }
+                _uiState.update { it.copy(isSaving = false) }
+                _events.tryEmit("Could not save: ${e.message}")
             }
         }
     }

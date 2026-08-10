@@ -10,11 +10,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -32,9 +36,18 @@ fun ProgressScreen(
     onFinished: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(uiState.runResults) {
         if (uiState.runResults != null) onFinished()
+    }
+
+    // startRun() can fail before ever producing progress/results (e.g. Dawarich becomes
+    // unconfigured in the moment between confirming the dry run and the write actually
+    // starting) — without this, that failure was previously silent and the screen just
+    // sat on "Starting…" forever with no explanation.
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { message -> snackbarHostState.showSnackbar(message) }
     }
 
     // The write itself survives navigation regardless (it runs in the ViewModel's own
@@ -43,7 +56,16 @@ fun ProgressScreen(
     BackHandler(enabled = uiState.runProgress != null) {}
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Writing GPS Tags") }) }
+        topBar = { TopAppBar(title = { Text("Writing GPS Tags") }) },
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+        }
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
