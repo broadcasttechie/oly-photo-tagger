@@ -133,6 +133,27 @@ class GpsSourcesViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
     }
+
+    /**
+     * A GPX file arrived via a share-intent (another app's "Share" action). Doesn't
+     * import immediately — just records it so the screen can ask the user to confirm
+     * first, same principle as never writing to photos without an explicit dry-run
+     * confirmation elsewhere in this app.
+     */
+    fun onShareIntentReceived(uri: Uri) {
+        val name = runCatching { DocumentFile.fromSingleUri(context, uri)?.name }.getOrNull() ?: "Shared GPX file"
+        _uiState.update { it.copy(pendingShareImport = PendingShareImport(uri, name)) }
+    }
+
+    fun confirmPendingShareImport() {
+        val pending = _uiState.value.pendingShareImport ?: return
+        _uiState.update { it.copy(pendingShareImport = null) }
+        importGpxFile(pending.uri)
+    }
+
+    fun dismissPendingShareImport() {
+        _uiState.update { it.copy(pendingShareImport = null) }
+    }
 }
 
 private fun GpxImportedFileEntity.toUiState() = GpxFileUiState(

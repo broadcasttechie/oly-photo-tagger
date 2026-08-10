@@ -1,6 +1,8 @@
 package com.olyphototagger.app.ui
 
+import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -17,12 +19,24 @@ import com.olyphototagger.app.ui.workflow.ProgressScreen
 import com.olyphototagger.app.ui.workflow.SummaryScreen
 
 @Composable
-fun AppNavigation(navController: NavHostController = rememberNavController()) {
+fun AppNavigation(
+    navController: NavHostController = rememberNavController(),
+    pendingShareUri: Uri? = null,
+    onPendingShareConsumed: () -> Unit = {}
+) {
     // Obtained once here, above any per-route backstack entry, so it's effectively
     // Activity-scoped — state (selected folder, offset, scan result) survives
     // navigating back and forth across Home/DryRun/Progress/Summary, since it's really
     // one continuous workflow rather than four independent screens.
     val workflowViewModel: GeotagWorkflowViewModel = viewModel()
+
+    // A GPX file shared in from another app takes the user straight to where they can
+    // confirm importing it, regardless of where they were in the app when it arrived.
+    LaunchedEffect(pendingShareUri) {
+        if (pendingShareUri != null) {
+            navController.navigate(AppRoute.GPS_SOURCES)
+        }
+    }
 
     NavHost(navController = navController, startDestination = AppRoute.HOME) {
         composable(AppRoute.HOME) {
@@ -71,6 +85,12 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
         }
         composable(AppRoute.GPS_SOURCES) {
             val gpsSourcesViewModel: GpsSourcesViewModel = viewModel()
+            LaunchedEffect(pendingShareUri) {
+                pendingShareUri?.let {
+                    gpsSourcesViewModel.onShareIntentReceived(it)
+                    onPendingShareConsumed()
+                }
+            }
             GpsSourcesScreen(
                 viewModel = gpsSourcesViewModel,
                 onBack = { navController.popBackStack() }

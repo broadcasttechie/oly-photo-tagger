@@ -17,6 +17,19 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- GPX has no single standard MIME type in the wild, so this matches
+                 broadly ("*/*") rather than guessing one — GpxParser is what actually
+                 validates the content, same principle as the file-picker import path.
+                 Both actions are required: confirmed by reading GPSLogger for Android's
+                 source that its file-share flow always fires ACTION_SEND_MULTIPLE, even
+                 for a single selected file — plain ACTION_SEND alone silently never
+                 matched real share traffic from it during testing. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
         </activity>
     </application>
 

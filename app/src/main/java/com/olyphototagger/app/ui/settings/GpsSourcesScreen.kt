@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -29,6 +30,7 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -78,7 +80,9 @@ fun GpsSourcesScreen(
         onApiTokenChange = viewModel::setApiToken,
         onSaveDawarich = viewModel::saveDawarichConfig,
         onImportGpxFile = { importGpxFile.launch(arrayOf("*/*")) },
-        onDeleteGpxFile = viewModel::deleteGpxFile
+        onDeleteGpxFile = viewModel::deleteGpxFile,
+        onConfirmPendingShareImport = viewModel::confirmPendingShareImport,
+        onDismissPendingShareImport = viewModel::dismissPendingShareImport
     )
 }
 
@@ -97,8 +101,20 @@ private fun GpsSourcesScreenContent(
     onApiTokenChange: (String) -> Unit,
     onSaveDawarich: () -> Unit,
     onImportGpxFile: () -> Unit,
-    onDeleteGpxFile: (Long) -> Unit
+    onDeleteGpxFile: (Long) -> Unit,
+    onConfirmPendingShareImport: () -> Unit,
+    onDismissPendingShareImport: () -> Unit
 ) {
+    uiState.pendingShareImport?.let { pending ->
+        AlertDialog(
+            onDismissRequest = onDismissPendingShareImport,
+            title = { Text("Import shared GPX file?") },
+            text = { Text("\"${pending.suggestedName}\" was shared with Oly Photo Tagger. Import it as a GPS source?") },
+            confirmButton = { TextButton(onClick = onConfirmPendingShareImport) { Text("Import") } },
+            dismissButton = { TextButton(onClick = onDismissPendingShareImport) { Text("Cancel") } }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -253,7 +269,8 @@ private fun GpsSourcesScreenEmptyPreview() {
             uiState = GpsSourcesUiState(),
             snackbarHostState = remember { SnackbarHostState() },
             onBack = {}, onSelectSource = {}, onBaseUrlChange = {}, onApiTokenChange = {},
-            onSaveDawarich = {}, onImportGpxFile = {}, onDeleteGpxFile = {}
+            onSaveDawarich = {}, onImportGpxFile = {}, onDeleteGpxFile = {},
+            onConfirmPendingShareImport = {}, onDismissPendingShareImport = {}
         )
     }
 }
@@ -270,7 +287,8 @@ private fun GpsSourcesScreenDawarichPreview() {
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onBack = {}, onSelectSource = {}, onBaseUrlChange = {}, onApiTokenChange = {},
-            onSaveDawarich = {}, onImportGpxFile = {}, onDeleteGpxFile = {}
+            onSaveDawarich = {}, onImportGpxFile = {}, onDeleteGpxFile = {},
+            onConfirmPendingShareImport = {}, onDismissPendingShareImport = {}
         )
     }
 }
@@ -286,7 +304,29 @@ private fun GpsSourcesScreenGpxPreview() {
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onBack = {}, onSelectSource = {}, onBaseUrlChange = {}, onApiTokenChange = {},
-            onSaveDawarich = {}, onImportGpxFile = {}, onDeleteGpxFile = {}
+            onSaveDawarich = {}, onImportGpxFile = {}, onDeleteGpxFile = {},
+            onConfirmPendingShareImport = {}, onDismissPendingShareImport = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Confirming a shared file")
+@Composable
+private fun GpsSourcesScreenPendingSharePreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        GpsSourcesScreenContent(
+            uiState = GpsSourcesUiState(
+                activeSource = GpsSourceType.GPX,
+                importedGpxFiles = PreviewFixtures.gpxFilesImported,
+                pendingShareImport = PendingShareImport(
+                    uri = android.net.Uri.parse("content://com.mendhak.gpslogger.fileprovider/gpx/20260810.gpx"),
+                    suggestedName = "20260810.gpx"
+                )
+            ),
+            snackbarHostState = remember { SnackbarHostState() },
+            onBack = {}, onSelectSource = {}, onBaseUrlChange = {}, onApiTokenChange = {},
+            onSaveDawarich = {}, onImportGpxFile = {}, onDeleteGpxFile = {},
+            onConfirmPendingShareImport = {}, onDismissPendingShareImport = {}
         )
     }
 }

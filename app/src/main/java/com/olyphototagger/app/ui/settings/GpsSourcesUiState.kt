@@ -1,5 +1,6 @@
 package com.olyphototagger.app.ui.settings
 
+import android.net.Uri
 import com.olyphototagger.app.settings.GpsSourceType
 import java.time.Instant
 
@@ -11,6 +12,11 @@ data class GpxFileUiState(
     val earliest: Instant,
     val latest: Instant
 )
+
+/** A GPX file arrived via a share-intent (e.g. "Share" from a GPS logger app) and is
+ *  awaiting the user's explicit confirmation before it's actually imported — the
+ *  screen shouldn't silently import whatever another app hands it. */
+data class PendingShareImport(val uri: Uri, val suggestedName: String)
 
 /**
  * Errors are deliberately NOT part of this state — see [GpsSourcesViewModel.events] and
@@ -27,5 +33,6 @@ data class GpsSourcesUiState(
     val hasExistingDawarichToken: Boolean = false,
     val importedGpxFiles: List<GpxFileUiState> = emptyList(),
     val isSaving: Boolean = false,
-    val saveMessage: String? = null
+    val saveMessage: String? = null,
+    val pendingShareImport: PendingShareImport? = null
 )
