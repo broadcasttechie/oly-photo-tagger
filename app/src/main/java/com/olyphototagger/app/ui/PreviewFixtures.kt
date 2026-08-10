@@ -105,12 +105,17 @@ internal object PreviewFixtures {
         PairWriteResult(
             pair = photo("P8080757"),
             jpegResult = GpsExifWriteResult.Written(null, 53.1, -2.1, 38.0, Instant.now()),
-            rawResult = GpsExifWriteResult.RenameFailedAfterDelete("P8080757.ORF.tmp")
+            rawResult = GpsExifWriteResult.NeedsRecovery("P8080757.ORF.tmp", "P8080757.ORF.bak")
         ),
         PairWriteResult(
             pair = photo("P8080760", hasRaw = false),
             jpegResult = GpsExifWriteResult.Failed("Verification mismatch after write"),
             rawResult = null
+        ),
+        PairWriteResult(
+            pair = photo("P8080774"),
+            jpegResult = GpsExifWriteResult.BackupArtifactPresent("P8080774.JPG.bak"),
+            rawResult = GpsExifWriteResult.BackupArtifactPresent("P8080774.ORF.bak")
         )
     )
 

@@ -15,9 +15,14 @@ import java.time.Instant
 
 /**
  * Writes GPS coordinates into a photo's EXIF in place, via SAF, following the required
- * safety sequence: copy to a sibling temp file → write → reread and verify → only then
- * delete the original and rename the temp file over it. A failure at any point leaves
- * either the untouched original or an orphaned `.tmp` — never a corrupted real filename.
+ * safety sequence: copy to a sibling temp file → write → reread and verify → then hand off
+ * to [SafeFileSwap], which renames the original to a backup, renames the temp file into the
+ * original's name, verifies *that*, and only then deletes the backup. A failure at any
+ * point leaves at least one file present under a name that represents a known-good state —
+ * either the untouched original (as itself, or renamed to its backup), or the correctly
+ * tagged result under the real name — never the "deleted, not yet renamed" window a plain
+ * delete-then-rename would leave if interrupted. See [GpsExifWriteResult.NeedsRecovery] and
+ * [IncompleteWriteRecoverer] for how an interrupted swap gets resolved on a later run.
  *
  * Two write paths, chosen by format:
  *  - JPEG and RAW formats ExifTool documents write support for ([RawFormats]) both go
@@ -68,6 +73,15 @@ class GpsExifWriter(
         val parent = original.parentFile
             ?: return@withContext GpsExifWriteResult.Failed("No parent folder for $originalName")
 
+        val backupName = GpsWriteSupport.backupNameFor(originalName)
+        // A stray backup means an earlier write on this exact file was interrupted and
+        // hasn't been resolved yet — refuse rather than risk compounding an
+        // already-inconsistent state. Only IncompleteWriteRecoverer touches this file
+        // again until that's sorted out.
+        if (parent.findFile(backupName) != null) {
+            return@withContext GpsExifWriteResult.BackupArtifactPresent(backupName)
+        }
+
         val existing = readLatLong(original.uri)
         if (existing != null && !overwriteExisting) {
             return@withContext GpsExifWriteResult.SkippedAlreadyTagged(existing.first, existing.second)
@@ -81,7 +95,7 @@ class GpsExifWriter(
             }
         }
 
-        val tempName = "$originalName.tmp"
+        val tempName = GpsWriteSupport.tempNameFor(originalName)
         // Clear out any orphan left by a previous interrupted run before starting fresh.
         parent.findFile(tempName)?.delete()
 
@@ -109,14 +123,22 @@ class GpsExifWriter(
                 return@withContext GpsExifWriteResult.Failed("Temp file is empty after write")
             }
 
-            if (!original.delete()) {
-                return@withContext GpsExifWriteResult.Failed("Could not delete original $originalName")
+            when (val swapResult = SafeFileSwap.swap(parent, original, temp, originalName)) {
+                is SwapResult.Success -> GpsExifWriteResult.Written(
+                    previousLatLong = existing,
+                    newLatitude = latitude,
+                    newLongitude = longitude,
+                    newAltitudeMeters = altitudeMeters,
+                    writtenAt = Instant.now(),
+                    strayBackupFileName = swapResult.strayBackupFileName
+                )
+                // The original is still present, untouched, under its real name — same
+                // safe territory as any other Failed result.
+                is SwapResult.BackupRenameFailed ->
+                    GpsExifWriteResult.Failed("Could not rename original to a backup: ${swapResult.reason}")
+                is SwapResult.FinalRenameFailed, is SwapResult.FinalRenameUnverified ->
+                    GpsExifWriteResult.NeedsRecovery(tempName, backupName)
             }
-            if (!temp.renameTo(originalName)) {
-                return@withContext GpsExifWriteResult.RenameFailedAfterDelete(tempName)
-            }
-
-            GpsExifWriteResult.Written(existing, latitude, longitude, altitudeMeters, Instant.now())
         } catch (e: IOException) {
             GpsExifWriteResult.Failed("I/O error: ${e.message}", e)
         }

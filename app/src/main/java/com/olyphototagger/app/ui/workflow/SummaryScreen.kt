@@ -106,9 +106,13 @@ private fun DetailLine(label: String, result: GpsExifWriteResult) {
         is GpsExifWriteResult.SkippedAlreadyTagged -> "$label: skipped — already had GPS data"
         is GpsExifWriteResult.UnsupportedFormat -> "$label: unsupported format (${result.mimeType ?: "unknown"})"
         is GpsExifWriteResult.Failed -> "$label: failed — ${result.reason}. Original file was not touched."
-        is GpsExifWriteResult.RenameFailedAfterDelete ->
-            "$label: WRITE SUCCEEDED but the final rename failed. The tagged file exists " +
-                "as \"${result.tempFileName}\" instead of its normal name — rename it back manually."
+        is GpsExifWriteResult.BackupArtifactPresent ->
+            "$label: skipped — an earlier interrupted write left \"${result.backupFileName}\" behind. " +
+                "Resolve it from the recovery screen before this file can be tagged."
+        is GpsExifWriteResult.NeedsRecovery ->
+            "$label: interrupted partway through. Nothing is lost — a good copy of the original is " +
+                "safe as \"${result.backupFileName}\" and the tagged result may be recoverable as " +
+                "\"${result.tempFileName}\" — resolve it from the recovery screen."
     }
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
 }
