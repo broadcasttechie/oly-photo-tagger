@@ -21,6 +21,7 @@ import com.olyphototagger.app.pipeline.PairWriteResult
 import com.olyphototagger.app.settings.ActiveGpsSourceResolver
 import com.olyphototagger.app.settings.GpsSourceType
 import com.olyphototagger.app.settings.SettingsRepository
+import com.olyphototagger.app.dcim.PhotoPair
 import com.olyphototagger.app.write.GpsExifWriter
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -99,6 +100,7 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
                 rootDisplayName = name,
                 preScanSummary = null,
                 scanResult = null,
+                deselectedPairKeys = emptySet(),
                 runResults = null
             )
         }
@@ -114,12 +116,20 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
         // A prior scan result was computed against the old offset — showing it as if
         // still valid after the offset changes would misrepresent what a real run
         // would actually do to the photos.
-        _uiState.update { it.copy(cameraOffsetSeconds = seconds, preScanSummary = null, scanResult = null) }
+        _uiState.update {
+            it.copy(cameraOffsetSeconds = seconds, preScanSummary = null, scanResult = null, deselectedPairKeys = emptySet())
+        }
     }
 
     fun setDateRange(start: Instant?, end: Instant?) {
         _uiState.update {
-            it.copy(dateRangeStart = start, dateRangeEnd = end, preScanSummary = null, scanResult = null)
+            it.copy(
+                dateRangeStart = start,
+                dateRangeEnd = end,
+                preScanSummary = null,
+                scanResult = null,
+                deselectedPairKeys = emptySet()
+            )
         }
     }
 
@@ -129,10 +139,30 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
             it.copy(
                 preScanSummary = null,
                 scanResult = null,
+                deselectedPairKeys = emptySet(),
                 runProgress = null,
                 runResults = null
             )
         }
+    }
+
+    /** Toggles whether a matched pair is excluded from the next [startRun] — the dry-run
+     *  screen's per-photo checkbox. */
+    fun toggleMatchSelection(pair: PhotoPair) {
+        val key = pair.stableKey()
+        _uiState.update {
+            val deselected = it.deselectedPairKeys
+            it.copy(deselectedPairKeys = if (key in deselected) deselected - key else deselected + key)
+        }
+    }
+
+    /** Bulk "select all" / "deselect all" for the dry-run screen's header toggle. */
+    fun setAllMatchesSelected(selected: Boolean) {
+        val matchedKeys = _uiState.value.scanResult?.matches
+            ?.filter { it.geoMatch is GeoMatch.Matched }
+            ?.map { it.pair.stableKey() }
+            .orEmpty()
+        _uiState.update { it.copy(deselectedPairKeys = if (selected) emptySet() else matchedKeys.toSet()) }
     }
 
     suspend fun runPreScan(): Boolean {
@@ -173,7 +203,9 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
         return try {
             val dcimRoot = requireNotNull(DocumentFile.fromTreeUri(context, root)) { "Could not open $root" }
             val result = orchestrator.scanForMatches(dcimRoot, currentOffset(), currentDateRange())
-            _uiState.update { it.copy(isBusy = false, busyMessage = null, scanResult = result) }
+            _uiState.update {
+                it.copy(isBusy = false, busyMessage = null, scanResult = result, deselectedPairKeys = emptySet())
+            }
             true
         } catch (e: Exception) {
             _uiState.update { it.copy(isBusy = false, busyMessage = null) }
@@ -213,8 +245,12 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
             // applyMatch() requires Matched and throws otherwise; only ever pass it
             // entries that actually cleared that bar. Anything else is exactly what
             // "skip and flag rather than silently interpolate across a gap" means — it's
-            // never written, matched or not.
-            val matches = scanResult.matches.filter { it.geoMatch is GeoMatch.Matched }
+            // never written, matched or not. A pair the user explicitly unchecked on the
+            // dry-run screen is excluded the same way, regardless of how it matched.
+            val deselected = _uiState.value.deselectedPairKeys
+            val matches = scanResult.matches.filter {
+                it.geoMatch is GeoMatch.Matched && it.pair.stableKey() !in deselected
+            }
             _uiState.update {
                 it.copy(runProgress = RunProgress(0, matches.size, "Starting…"), runResults = null)
             }

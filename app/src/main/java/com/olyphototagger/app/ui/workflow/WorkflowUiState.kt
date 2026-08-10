@@ -1,6 +1,7 @@
 package com.olyphototagger.app.ui.workflow
 
 import android.net.Uri
+import com.olyphototagger.app.dcim.PhotoPair
 import com.olyphototagger.app.pipeline.PairWriteResult
 import com.olyphototagger.app.pipeline.PreScanSummary
 import com.olyphototagger.app.pipeline.ScanResult
@@ -30,8 +31,16 @@ data class WorkflowUiState(
     val busyMessage: String? = null,
     val preScanSummary: PreScanSummary? = null,
     val scanResult: ScanResult? = null,
+    /** Pairs the user has explicitly excluded from the upcoming write, keyed by
+     *  [PhotoPair.stableKey] — opt-out rather than opt-in, so everything a scan found
+     *  eligible is selected by default and this stays empty in the common case. */
+    val deselectedPairKeys: Set<String> = emptySet(),
     val runProgress: RunProgress? = null,
     val runResults: List<PairWriteResult>? = null
 ) {
     val canScan: Boolean get() = rootUri != null && !isBusy
 }
+
+/** Stable identity for a pair within one scan — folder + base name together, since base
+ *  names alone could collide across two DCIM folders on the same card. */
+fun PhotoPair.stableKey(): String = "$folderName/$baseName"
