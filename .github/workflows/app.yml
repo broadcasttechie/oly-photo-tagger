@@ -1,0 +1,65 @@
+name: app (debug APK)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "keystore/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradlew"
+      - ".github/workflows/app.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Ensure required Android SDK packages
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-35" "build-tools;35.0.0" >/dev/null
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Compute version string
+        id: ver
+        run: |
+          version=$(grep -m1 'versionName = ' app/build.gradle.kts | sed -E 's/.*"(.*)".*/\1/')
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Rename APK for the release
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             "oly-photo-tagger-${{ steps.ver.outputs.version }}-debug.apk"
+
+      - name: Publish rolling "latest debug build" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-latest
+          name: "Latest debug build (${{ steps.ver.outputs.version }}, ${{ github.sha }})"
+          body: |
+            Automatically built from commit ${{ github.sha }} on ${{ github.ref_name }}.
+            Debug build — signed with the repo's shared debug key, arm64-v8a only.
+            Not for distribution beyond testing.
+          prerelease: true
+          make_latest: false
+          files: oly-photo-tagger-${{ steps.ver.outputs.version }}-debug.apk

@@ -48,6 +48,21 @@ android {
         }
     }
 
+    signingConfigs {
+        getByName("debug") {
+            // A checked-in debug keystore (same well-known credentials AGP's
+            // auto-generated one uses) so every machine — this laptop, CI, anyone
+            // else's — signs debug builds identically. Without this, each machine
+            // gets its own random debug key, and installing a debug APK built
+            // elsewhere over one built locally fails with "App not installed"
+            // until the old one is uninstalled first.
+            storeFile = rootProject.file("keystore/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false

@@ -26,6 +26,10 @@ build/
 *.keystore
 key.properties
 
+# Except: the shared debug keystore (well-known debug credentials, intentionally
+# committed so every machine — local, CI — signs debug builds identically).
+!keystore/debug.keystore
+
 # Log Files
 *.log
 
