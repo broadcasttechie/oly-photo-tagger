@@ -3,7 +3,6 @@ package com.olyphototagger.app.pipeline
 import androidx.documentfile.provider.DocumentFile
 import com.olyphototagger.app.cache.GeoTagCacheDao
 import com.olyphototagger.app.cache.GeoTagCacheEntity
-import com.olyphototagger.app.dawarich.DawarichClient
 import com.olyphototagger.app.dcim.CameraFile
 import com.olyphototagger.app.dcim.DcimScanResult
 import com.olyphototagger.app.dcim.DcimScanner
@@ -16,13 +15,14 @@ import com.olyphototagger.app.exif.PhotoExifStatusReader
 import com.olyphototagger.app.exif.toInstant
 import com.olyphototagger.app.geotag.GeoInterpolator
 import com.olyphototagger.app.geotag.GeoMatch
+import com.olyphototagger.app.geotag.GpsSource
 import com.olyphototagger.app.write.GpsExifWriter
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 
 /**
- * Ties the individual engines — scanner, pairer, EXIF readers, Dawarich client,
+ * Ties the individual engines — scanner, pairer, EXIF readers, GPS source,
  * interpolator, writer — into the actual two-phase workflow: [scanForMatches] produces a
  * dry-run preview with no writes; [applyMatch] performs the write for one confirmed match.
  */
@@ -30,7 +30,7 @@ class GeotagOrchestrator(
     private val dcimScanner: DcimScanner,
     private val exifStatusReader: PhotoExifStatusReader,
     private val geoTagCacheDao: GeoTagCacheDao,
-    private val dawarichClient: DawarichClient,
+    private val gpsSource: GpsSource,
     private val geoInterpolator: GeoInterpolator,
     private val gpsExifWriter: GpsExifWriter
 ) {
@@ -38,8 +38,8 @@ class GeotagOrchestrator(
     /**
      * Scans [dcimRoot], resolves each pair's tagged-status and timestamp — using the
      * geotag cache to skip opening files already known tagged — and matches the
-     * remaining candidates against the Dawarich track for their combined time span. No
-     * writes happen here.
+     * remaining candidates against the active GPS source's track for their combined
+     * time span. No writes happen here.
      *
      * @param includeAlreadyTagged main workflow leaves this false: already-tagged pairs
      *   are skipped, and if the cache already knows that, never even opened. The stretch
@@ -61,7 +61,7 @@ class GeotagOrchestrator(
 
         val start = c.included.minOf { it.second }
         val end = c.included.maxOf { it.second }
-        val track = dawarichClient.fetchTrackPoints(
+        val track = gpsSource.fetchTrackPoints(
             start.minus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES),
             end.plus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES)
         )
@@ -76,7 +76,7 @@ class GeotagOrchestrator(
     /**
      * A quick "how much is there to do" count for the Home screen's optional prescan
      * action — reuses the same cache-first classification as [scanForMatches] but skips
-     * the Dawarich fetch and interpolation entirely, since a UI showing counts has no
+     * the GPS source fetch and interpolation entirely, since a UI showing counts has no
      * reason to hit the network.
      */
     suspend fun preScan(

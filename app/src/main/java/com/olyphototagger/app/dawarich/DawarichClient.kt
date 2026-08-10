@@ -1,5 +1,6 @@
 package com.olyphototagger.app.dawarich
 
+import com.olyphototagger.app.geotag.GpsSource
 import com.olyphototagger.app.geotag.TrackPoint
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -21,13 +22,13 @@ class DawarichClient(
     private val httpClient: HttpClient,
     private val baseUrl: String,
     private val apiToken: String
-) {
+) : GpsSource {
     /**
      * Follows pagination via the X-Total-Pages response header until exhausted, and
      * always returns points sorted ascending by time — GeoInterpolator requires that
      * invariant, and an external API's ordering isn't something to trust blindly.
      */
-    suspend fun fetchTrackPoints(startInclusive: Instant, endInclusive: Instant): List<TrackPoint> {
+    override suspend fun fetchTrackPoints(startInclusive: Instant, endInclusive: Instant): List<TrackPoint> {
         val points = mutableListOf<TrackPoint>()
         var page = 1
         var totalPages = 1

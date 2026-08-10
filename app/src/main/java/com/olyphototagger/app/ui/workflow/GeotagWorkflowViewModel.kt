@@ -242,6 +242,7 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
         return if (start != null && end != null) start..end else null
     }
 
+    // TODO(chunk 5): branch on the active GpsSourceType instead of hardcoding Dawarich.
     private suspend fun buildOrchestrator(): GeotagOrchestrator? {
         val dawarichConfig = settingsRepository.dawarichConfig.first() ?: return null
         val gapMinutes = settingsRepository.gapThresholdMinutes.first()
@@ -249,7 +250,7 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
             dcimScanner = dcimScanner,
             exifStatusReader = exifStatusReader,
             geoTagCacheDao = AppDatabase.getInstance(context).geoTagCacheDao(),
-            dawarichClient = DawarichClient(createDawarichHttpClient(), dawarichConfig.baseUrl, dawarichConfig.apiToken),
+            gpsSource = DawarichClient(createDawarichHttpClient(), dawarichConfig.baseUrl, dawarichConfig.apiToken),
             geoInterpolator = GeoInterpolator(maxBracketGap = Duration.ofMinutes(gapMinutes.toLong())),
             gpsExifWriter = gpsExifWriter
         )
