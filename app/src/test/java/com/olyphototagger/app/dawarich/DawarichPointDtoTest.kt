@@ -1,5 +1,7 @@
 package com.olyphototagger.app.dawarich
 
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -25,5 +27,33 @@ class DawarichPointDtoTest {
     @Test
     fun `non-numeric coordinate is unparsable`() {
         assertNull(DawarichPointDto(latitude = "unknown", longitude = "1.0", timestamp = 0).toTrackPointOrNull())
+    }
+
+    @Test
+    fun `missing altitude maps to null`() {
+        val dto = DawarichPointDto(latitude = "1.0", longitude = "1.0", timestamp = 0)
+        assertNull(requireNotNull(dto.toTrackPointOrNull()).altitudeMeters)
+    }
+
+    @Test
+    fun `explicit JSON null altitude maps to null`() {
+        val dto = DawarichPointDto(latitude = "1.0", longitude = "1.0", timestamp = 0, altitude = JsonNull)
+        assertNull(requireNotNull(dto.toTrackPointOrNull()).altitudeMeters)
+    }
+
+    @Test
+    fun `altitude as a bare JSON number parses`() {
+        // The legacy integer `altitude` column serializes this way.
+        val dto = DawarichPointDto(latitude = "1.0", longitude = "1.0", timestamp = 0, altitude = JsonPrimitive(38))
+        assertEquals(38.0, requireNotNull(dto.toTrackPointOrNull()).altitudeMeters!!, 1e-9)
+    }
+
+    @Test
+    fun `altitude as a JSON string parses`() {
+        // The newer `altitude_decimal` column serializes as a string (Rails BigDecimal
+        // convention) — both shapes must be handled since which column a row uses
+        // depends on whether it's been backfilled.
+        val dto = DawarichPointDto(latitude = "1.0", longitude = "1.0", timestamp = 0, altitude = JsonPrimitive("38.5"))
+        assertEquals(38.5, requireNotNull(dto.toTrackPointOrNull()).altitudeMeters!!, 1e-9)
     }
 }

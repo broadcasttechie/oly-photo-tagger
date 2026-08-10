@@ -37,7 +37,11 @@ class DawarichClient(
                 header(HttpHeaders.Authorization, "Bearer $apiToken")
                 parameter("start_at", startInclusive.epochSecond)
                 parameter("end_at", endInclusive.epochSecond)
-                parameter("slim", true)
+                // Slim mode omits altitude entirely — see DawarichPointDto's doc for why
+                // that matters. Costs ~4.6x the response bytes (measured against a live
+                // instance: 14.7KB -> 67.5KB for 96 points), acceptable for a per-run
+                // track fetch that's at most a day or two of points.
+                parameter("slim", false)
                 parameter("order", "asc")
                 parameter("page", page)
             }
