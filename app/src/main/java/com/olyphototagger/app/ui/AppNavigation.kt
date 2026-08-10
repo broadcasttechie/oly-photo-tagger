@@ -6,6 +6,8 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.olyphototagger.app.ui.settings.GpsSourcesScreen
+import com.olyphototagger.app.ui.settings.GpsSourcesViewModel
 import com.olyphototagger.app.ui.settings.SettingsScreen
 import com.olyphototagger.app.ui.settings.SettingsViewModel
 import com.olyphototagger.app.ui.workflow.DryRunScreen
@@ -27,7 +29,8 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
             HomeScreen(
                 viewModel = workflowViewModel,
                 onNavigateToDryRun = { navController.navigate(AppRoute.DRY_RUN) },
-                onNavigateToSettings = { navController.navigate(AppRoute.SETTINGS) }
+                onNavigateToSettings = { navController.navigate(AppRoute.SETTINGS) },
+                onNavigateToGpsSources = { navController.navigate(AppRoute.GPS_SOURCES) }
             )
         }
         composable(AppRoute.DRY_RUN) {
@@ -62,6 +65,14 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
             val settingsViewModel: SettingsViewModel = viewModel()
             SettingsScreen(
                 viewModel = settingsViewModel,
+                onBack = { navController.popBackStack() },
+                onNavigateToGpsSources = { navController.navigate(AppRoute.GPS_SOURCES) }
+            )
+        }
+        composable(AppRoute.GPS_SOURCES) {
+            val gpsSourcesViewModel: GpsSourcesViewModel = viewModel()
+            GpsSourcesScreen(
+                viewModel = gpsSourcesViewModel,
                 onBack = { navController.popBackStack() }
             )
         }

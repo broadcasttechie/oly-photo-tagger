@@ -9,6 +9,7 @@ import com.olyphototagger.app.pipeline.PairWriteResult
 import com.olyphototagger.app.pipeline.PreScanSummary
 import com.olyphototagger.app.pipeline.ProposedMatch
 import com.olyphototagger.app.pipeline.ScanResult
+import com.olyphototagger.app.ui.settings.GpxFileUiState
 import com.olyphototagger.app.ui.workflow.RunProgress
 import com.olyphototagger.app.write.GpsExifWriteResult
 import java.time.Duration
@@ -110,6 +111,23 @@ internal object PreviewFixtures {
             pair = photo("P8080760", hasRaw = false),
             jpegResult = GpsExifWriteResult.Failed("Verification mismatch after write"),
             rawResult = null
+        )
+    )
+
+    val gpxFilesImported = listOf(
+        GpxFileUiState(
+            id = 1,
+            displayName = "saturday.gpx",
+            pointCount = 842,
+            earliest = Instant.parse("2026-08-08T08:00:00Z"),
+            latest = Instant.parse("2026-08-08T18:30:00Z")
+        ),
+        GpxFileUiState(
+            id = 2,
+            displayName = "sunday.gpx",
+            pointCount = 630,
+            earliest = Instant.parse("2026-08-09T09:15:00Z"),
+            latest = Instant.parse("2026-08-09T17:45:00Z")
         )
     )
 }

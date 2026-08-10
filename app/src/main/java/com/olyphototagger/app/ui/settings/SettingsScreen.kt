@@ -13,6 +13,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
@@ -26,7 +27,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,7 +36,8 @@ import com.olyphototagger.app.ui.theme.OlyPhotoTaggerTheme
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigateToGpsSources: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -49,8 +50,7 @@ fun SettingsScreen(
         uiState = uiState,
         snackbarHostState = snackbarHostState,
         onBack = onBack,
-        onBaseUrlChange = viewModel::setBaseUrl,
-        onApiTokenChange = viewModel::setApiToken,
+        onNavigateToGpsSources = onNavigateToGpsSources,
         onGapThresholdChange = viewModel::setGapThresholdMinutes,
         onSave = viewModel::save
     )
@@ -62,8 +62,7 @@ private fun SettingsScreenContent(
     uiState: SettingsUiState,
     snackbarHostState: SnackbarHostState,
     onBack: () -> Unit,
-    onBaseUrlChange: (String) -> Unit,
-    onApiTokenChange: (String) -> Unit,
+    onNavigateToGpsSources: () -> Unit,
     onGapThresholdChange: (String) -> Unit,
     onSave: () -> Unit
 ) {
@@ -92,27 +91,15 @@ private fun SettingsScreenContent(
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Dawarich", style = MaterialTheme.typography.titleMedium)
-
-            OutlinedTextField(
-                value = uiState.dawarichBaseUrl,
-                onValueChange = onBaseUrlChange,
-                label = { Text("Base URL") },
-                placeholder = { Text("dawarich.example.com") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+            Text("GPS source", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Choose and configure where GPS tracks come from — Dawarich or imported GPX files.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-
-            OutlinedTextField(
-                value = uiState.dawarichApiToken,
-                onValueChange = onApiTokenChange,
-                label = { Text("API token") },
-                placeholder = { Text(if (uiState.hasExistingToken) "Saved — enter a new one to replace" else "Paste your API token") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                modifier = Modifier.fillMaxWidth()
-            )
+            OutlinedButton(onClick = onNavigateToGpsSources, modifier = Modifier.fillMaxWidth()) {
+                Text("Manage GPS Sources")
+            }
 
             Text("Matching", style = MaterialTheme.typography.titleMedium)
 
@@ -141,31 +128,26 @@ private fun SettingsScreenContent(
     }
 }
 
-@Preview(showBackground = true, name = "Empty")
+@Preview(showBackground = true, name = "Default")
 @Composable
-private fun SettingsScreenEmptyPreview() {
+private fun SettingsScreenDefaultPreview() {
     OlyPhotoTaggerTheme(dynamicColor = false) {
         SettingsScreenContent(
             uiState = SettingsUiState(gapThresholdMinutes = "5"),
             snackbarHostState = remember { SnackbarHostState() },
-            onBack = {}, onBaseUrlChange = {}, onApiTokenChange = {}, onGapThresholdChange = {}, onSave = {}
+            onBack = {}, onNavigateToGpsSources = {}, onGapThresholdChange = {}, onSave = {}
         )
     }
 }
 
-@Preview(showBackground = true, name = "Configured")
+@Preview(showBackground = true, name = "Saved")
 @Composable
-private fun SettingsScreenConfiguredPreview() {
+private fun SettingsScreenSavedPreview() {
     OlyPhotoTaggerTheme(dynamicColor = false) {
         SettingsScreenContent(
-            uiState = SettingsUiState(
-                dawarichBaseUrl = "https://dawarich.home.example.com",
-                hasExistingToken = true,
-                gapThresholdMinutes = "5",
-                saveMessage = "Settings saved"
-            ),
+            uiState = SettingsUiState(gapThresholdMinutes = "5", saveMessage = "Settings saved"),
             snackbarHostState = remember { SnackbarHostState() },
-            onBack = {}, onBaseUrlChange = {}, onApiTokenChange = {}, onGapThresholdChange = {}, onSave = {}
+            onBack = {}, onNavigateToGpsSources = {}, onGapThresholdChange = {}, onSave = {}
         )
     }
 }

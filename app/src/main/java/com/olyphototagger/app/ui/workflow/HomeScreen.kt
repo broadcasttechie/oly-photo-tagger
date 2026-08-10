@@ -66,7 +66,8 @@ import kotlin.math.abs
 fun HomeScreen(
     viewModel: GeotagWorkflowViewModel,
     onNavigateToDryRun: () -> Unit,
-    onNavigateToSettings: () -> Unit
+    onNavigateToSettings: () -> Unit,
+    onNavigateToGpsSources: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -86,10 +87,13 @@ fun HomeScreen(
         viewModel.events.collect { message ->
             val result = snackbarHostState.showSnackbar(
                 message = message,
-                actionLabel = if (message == GeotagWorkflowViewModel.MISSING_GPS_SOURCE_MESSAGE) "Settings" else null,
+                // Deep-links straight to GPS Sources — that's where the actual fix
+                // lives now that Dawarich's fields moved out of the general Settings
+                // screen — rather than Settings, which no longer has anything to fix.
+                actionLabel = if (message == GeotagWorkflowViewModel.MISSING_GPS_SOURCE_MESSAGE) "Fix" else null,
                 duration = SnackbarDuration.Long
             )
-            if (result == SnackbarResult.ActionPerformed) onNavigateToSettings()
+            if (result == SnackbarResult.ActionPerformed) onNavigateToGpsSources()
         }
     }
 
