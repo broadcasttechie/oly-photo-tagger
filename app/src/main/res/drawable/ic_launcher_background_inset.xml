@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The adaptive-icon canvas is 108dp but launchers only guarantee the center 66dp
+     circle survives their mask/zoom - that's what a 21dp inset on each side yields
+     ((108 - 21*2) = 66). ic_launcher_background.png is full-bleed art, so it gets
+     inset here rather than edited, leaving it usable unmodified elsewhere. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_launcher_background"
+    android:insetLeft="21dp"
+    android:insetTop="21dp"
+    android:insetRight="21dp"
+    android:insetBottom="21dp" />
