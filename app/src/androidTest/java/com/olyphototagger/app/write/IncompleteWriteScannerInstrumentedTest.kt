@@ -34,7 +34,7 @@ class IncompleteWriteScannerInstrumentedTest {
         File(folder, "P8080744.JPG").writeText("untouched jpeg")
         File(folder, "P8080744.ORF").writeText("untouched raw")
 
-        val scanner = IncompleteWriteScanner(DcimScanner())
+        val scanner = IncompleteWriteScanner(DcimScanner(context.contentResolver))
         val result = scanner.scan(DocumentFile.fromFile(dcimRoot))
 
         val item = result.items.single()

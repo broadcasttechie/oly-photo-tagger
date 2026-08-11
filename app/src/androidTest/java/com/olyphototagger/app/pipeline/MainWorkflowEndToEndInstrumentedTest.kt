@@ -71,7 +71,7 @@ class MainWorkflowEndToEndInstrumentedTest {
         Log.i(TAG, "Using assumed camera clock offset: $offset")
 
         val orchestrator = GeotagOrchestrator(
-            dcimScanner = DcimScanner(),
+            dcimScanner = DcimScanner(context.contentResolver),
             exifStatusReader = PhotoExifStatusReader(context.contentResolver),
             geoTagCacheDao = AppDatabase.getInstance(context).geoTagCacheDao(),
             gpsSource = DawarichClient(createDawarichHttpClient(), baseUrl!!, token!!),

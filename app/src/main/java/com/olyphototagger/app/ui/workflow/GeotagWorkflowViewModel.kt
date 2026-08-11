@@ -54,7 +54,7 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
 
     private val context get() = getApplication<Application>()
     private val settingsRepository = SettingsRepository(context)
-    private val dcimScanner = DcimScanner()
+    private val dcimScanner = DcimScanner(context.contentResolver)
     private val incompleteWriteScanner = IncompleteWriteScanner(dcimScanner)
     private val exifStatusReader = PhotoExifStatusReader(context.contentResolver)
     private val gpsExifWriter = GpsExifWriter(
