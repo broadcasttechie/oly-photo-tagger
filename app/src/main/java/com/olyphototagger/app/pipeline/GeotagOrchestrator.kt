@@ -20,6 +20,11 @@ import com.olyphototagger.app.geotag.GpsSource
 import com.olyphototagger.app.write.GpsExifWriteResult
 import com.olyphototagger.app.write.GpsExifWriter
 import com.olyphototagger.app.write.WriteLogMapper
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
@@ -115,11 +120,12 @@ class GeotagOrchestrator(
         val scan = dcimScanner.scan(dcimRoot)
         val pairing = PhotoPairer.pair(scan.files)
 
+        val statuses = resolveStatusesConcurrently(pairing.pairs, scan, assumedOffsetForNaiveTimestamps)
+
         val included = mutableListOf<Pair<PhotoPair, Instant>>()
         val excluded = mutableListOf<ExcludedPair>()
 
-        for (pair in pairing.pairs) {
-            val status = resolvePairStatus(pair, scan, assumedOffsetForNaiveTimestamps)
+        for ((pair, status) in statuses) {
             when (val decision = PairFilter.decide(status, includeAlreadyTagged, dateRange)) {
                 is PairDecision.Include -> included += pair to decision.timestamp
                 PairDecision.ExcludeAlreadyTagged -> excluded += ExcludedPair(pair, ExcludeReason.ALREADY_TAGGED)
@@ -129,6 +135,31 @@ class GeotagOrchestrator(
         }
 
         return Classification(scan, pairing, included, excluded)
+    }
+
+    /**
+     * Resolving one pair's tagged-status is dominated by real I/O — a geotag-cache check,
+     * and on a cache miss, actually opening the file to read its EXIF — that's completely
+     * independent per pair, so this runs them concurrently rather than one at a time. Found
+     * necessary by a 1000-photo stress test: sequential, this was several hundred
+     * milliseconds per pair, adding up to minutes overall.
+     *
+     * A [Semaphore] caps how many run at once rather than firing all of them at once —
+     * hundreds/thousands of simultaneous SAF file opens would mostly just queue up behind
+     * the OS's own binder thread pool anyway, or risk overwhelming the storage provider
+     * process for no real gain over a bounded number running at a time.
+     */
+    private suspend fun resolveStatusesConcurrently(
+        pairs: List<PhotoPair>,
+        scan: DcimScanResult,
+        assumedOffsetForNaiveTimestamps: ZoneOffset
+    ): List<Pair<PhotoPair, PairGeoStatus>> = coroutineScope {
+        val semaphore = Semaphore(MAX_CONCURRENT_STATUS_CHECKS)
+        pairs.map { pair ->
+            async {
+                semaphore.withPermit { pair to resolvePairStatus(pair, scan, assumedOffsetForNaiveTimestamps) }
+            }
+        }.awaitAll()
     }
 
     /** Writes a confirmed match's coordinates to both files in its pair (whichever are present). */
@@ -205,5 +236,9 @@ class GeotagOrchestrator(
 
     companion object {
         private const val TRACK_FETCH_SLACK_MINUTES = 30L
+
+        /** Bounds concurrent per-pair status resolution in [resolveStatusesConcurrently] —
+         *  see that function's doc for why this is bounded rather than unbounded. */
+        private const val MAX_CONCURRENT_STATUS_CHECKS = 8
     }
 }
