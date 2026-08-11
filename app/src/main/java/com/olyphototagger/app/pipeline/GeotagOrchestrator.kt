@@ -30,6 +30,7 @@ import kotlinx.coroutines.sync.withPermit
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -208,6 +209,15 @@ class GeotagOrchestrator(
      * [matches]' order (several can finish close together when running concurrently) —
      * lets the caller drive live progress UI without this function needing to know
      * anything about it.
+     *
+     * Once any write fails because its destination is out of space, every match not yet
+     * started is skipped rather than attempted — confirmed on-device (2026-08-11, a real
+     * SD card that filled up mid-testing) that without this, a full card means grinding
+     * through the *entire* remaining batch, each one doing real (temp-file-creating,
+     * exiftool-invoking) work only to fail the exact same way. [outOfSpace] is a plain
+     * flag, not a hard guarantee: a few writes already past the check when the first
+     * failure lands can still race through for real, which is fine — that's the batch
+     * genuinely confirming the problem persists, not a bug to close.
      */
     suspend fun applyMatches(
         scan: ScanResult,
@@ -220,9 +230,17 @@ class GeotagOrchestrator(
         val strayArtifacts = gpsExifWriter.newStrayArtifactIndex()
         val semaphore = Semaphore(MAX_CONCURRENT_WRITES)
         val completedCount = AtomicInteger(0)
+        val outOfSpace = AtomicBoolean(false)
         matches.map { match ->
             async {
-                val result = semaphore.withPermit { applyMatchCatching(scan, match, overwriteExisting, strayArtifacts) }
+                val result = if (outOfSpace.get()) {
+                    OutOfSpaceGuard.skipped(match)
+                } else {
+                    semaphore.withPermit {
+                        applyMatchCatching(scan, match, overwriteExisting, strayArtifacts)
+                            .also { if (OutOfSpaceGuard.indicatesOutOfSpace(it)) outOfSpace.set(true) }
+                    }
+                }
                 onEachResult(result, completedCount.incrementAndGet(), matches.size)
                 result
             }
