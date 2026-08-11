@@ -15,7 +15,8 @@ The camera mounts over USB as plain Mass Storage. The app:
    share-intent (multiple imports pool together into one merged track).
 5. Interpolates lat/lon between bracketing track points, honoring a configurable max
    time-gap threshold (skip and flag rather than interpolate across large gaps).
-6. Writes GPS EXIF tags in place via a safe temp-file → verify → rename sequence.
+6. Writes GPS EXIF tags in place, several files at once, via a safe temp-file → verify →
+   rename sequence.
 
 ## Safeguards
 
@@ -27,8 +28,9 @@ The camera mounts over USB as plain Mass Storage. The app:
 - Crash-safe writes: the original is renamed to a backup, the tagged temp file is renamed
   into place and verified, and only then is the backup deleted — at every point in that
   sequence a known-good copy is present under a discoverable name. If the app is killed or
-  crashes mid-write, it detects the interrupted state on next launch and walks you through
-  recovering it; nothing is ever silently lost or left corrupted.
+  crashes mid-write — including mid-*batch*, with several files interrupted at once — it
+  detects every interrupted file on next launch and walks you through recovering each one;
+  nothing is ever silently lost or left corrupted.
 
 ## Known limitations
 
