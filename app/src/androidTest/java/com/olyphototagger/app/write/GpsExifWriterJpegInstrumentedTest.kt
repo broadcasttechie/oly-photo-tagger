@@ -55,8 +55,8 @@ class GpsExifWriterJpegInstrumentedTest {
 
         val result = writer.write(
             original = original,
-            latitude = 53.4808,
-            longitude = -2.2426,
+            latitude = 46.4808,
+            longitude = 2.2426,
             altitudeMeters = 38.0
         )
 
@@ -95,7 +95,7 @@ class GpsExifWriterJpegInstrumentedTest {
             "Could not find ${work.name} via DocumentFile.listFiles()"
         }
 
-        val result = writer.write(original = original, latitude = 53.4808, longitude = -2.2426)
+        val result = writer.write(original = original, latitude = 46.4808, longitude = 2.2426)
 
         assertTrue("Expected Failed for a genuinely invalid JPEG, got $result", result is GpsExifWriteResult.Failed)
         assertTrue("Original should be untouched", work.exists())

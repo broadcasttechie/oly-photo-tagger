@@ -52,8 +52,8 @@ class GpsWriteIntegrityInstrumentedTest {
 
             val args = GpsExifToolCommand.build(
                 targetPath = after.absolutePath,
-                latitude = 53.4808,
-                longitude = -2.2426,
+                latitude = 46.4808,
+                longitude = 2.2426,
                 altitudeMeters = 38.0
             )
             val result = invoker.run(args)

@@ -52,12 +52,12 @@ internal object PreviewFixtures {
         ProposedMatch(
             photo("P8080743"),
             Instant.parse("2026-08-08T13:24:56Z"),
-            GeoMatch.Matched(53.122827, -2.075001, 38.0, Duration.ofSeconds(4), Duration.ofSeconds(2))
+            GeoMatch.Matched(46.851827, 2.502001, 165.0, Duration.ofSeconds(4), Duration.ofSeconds(2))
         ),
         ProposedMatch(
             photo("P8080744"),
             Instant.parse("2026-08-08T13:26:10Z"),
-            GeoMatch.Matched(53.124833, -2.075267, 41.0, Duration.ofSeconds(6), Duration.ofSeconds(3))
+            GeoMatch.Matched(46.853833, 2.503267, 168.0, Duration.ofSeconds(6), Duration.ofSeconds(3))
         )
     )
     val gapTooLarge = listOf(
@@ -114,15 +114,15 @@ internal object PreviewFixtures {
     val runResultsAllSucceeded = matched.map {
         PairWriteResult(
             pair = it.pair,
-            jpegResult = GpsExifWriteResult.Written(null, 53.1, -2.1, 38.0, Instant.now()),
-            rawResult = GpsExifWriteResult.Written(null, 53.1, -2.1, 38.0, Instant.now())
+            jpegResult = GpsExifWriteResult.Written(null, 46.85, 2.50, 165.0, Instant.now()),
+            rawResult = GpsExifWriteResult.Written(null, 46.85, 2.50, 165.0, Instant.now())
         )
     }
 
     val runResultsNeedingAttention = runResultsAllSucceeded + listOf(
         PairWriteResult(
             pair = photo("P8080757"),
-            jpegResult = GpsExifWriteResult.Written(null, 53.1, -2.1, 38.0, Instant.now()),
+            jpegResult = GpsExifWriteResult.Written(null, 46.85, 2.50, 165.0, Instant.now()),
             rawResult = GpsExifWriteResult.NeedsRecovery("P8080757.ORF.tmp", "P8080757.ORF.bak")
         ),
         PairWriteResult(
@@ -210,8 +210,8 @@ internal object PreviewFixtures {
             displayName = "P8080743.JPG",
             resultType = WriteLogResultType.WRITTEN,
             previousLatLong = null,
-            newLatLong = 53.122827 to -2.075001,
-            newAltitudeMeters = 38.0,
+            newLatLong = 46.851827 to 2.502001,
+            newAltitudeMeters = 165.0,
             detail = null
         ),
         WriteLogEntryUiState(
@@ -231,7 +231,7 @@ internal object PreviewFixtures {
             folderName = "100OLYMP",
             displayName = "P8080744.JPG",
             resultType = WriteLogResultType.SKIPPED_ALREADY_TAGGED,
-            previousLatLong = 53.124833 to -2.075267,
+            previousLatLong = 46.853833 to 2.503267,
             newLatLong = null,
             newAltitudeMeters = null,
             detail = null

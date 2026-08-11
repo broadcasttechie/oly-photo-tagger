@@ -31,34 +31,34 @@ class GpsWriteSupportTest {
 
     @Test
     fun `exact coordinate match`() {
-        assertTrue(GpsWriteSupport.coordinatesMatch(53.4808, -2.2426, 53.4808, -2.2426))
+        assertTrue(GpsWriteSupport.coordinatesMatch(46.4808, 2.2426, 46.4808, 2.2426))
     }
 
     @Test
     fun `small rounding difference within tolerance matches`() {
-        assertTrue(GpsWriteSupport.coordinatesMatch(53.48080001, -2.24260001, 53.4808, -2.2426))
+        assertTrue(GpsWriteSupport.coordinatesMatch(46.48080001, 2.24260001, 46.4808, 2.2426))
     }
 
     @Test
     fun `difference outside tolerance does not match`() {
-        assertFalse(GpsWriteSupport.coordinatesMatch(53.4809, -2.2426, 53.4808, -2.2426))
+        assertFalse(GpsWriteSupport.coordinatesMatch(46.4809, 2.2426, 46.4808, 2.2426))
     }
 
     @Test
     fun `difference in longitude alone is caught`() {
-        assertFalse(GpsWriteSupport.coordinatesMatch(53.4808, -2.2500, 53.4808, -2.2426))
+        assertFalse(GpsWriteSupport.coordinatesMatch(46.4808, 2.2500, 46.4808, 2.2426))
     }
 
     @Test
     fun `custom tolerance is honored`() {
         assertFalse(
             GpsWriteSupport.coordinatesMatch(
-                53.4808001, -2.2426, 53.4808, -2.2426, toleranceDegrees = 0.00000005
+                46.4808001, 2.2426, 46.4808, 2.2426, toleranceDegrees = 0.00000005
             )
         )
         assertTrue(
             GpsWriteSupport.coordinatesMatch(
-                53.4808001, -2.2426, 53.4808, -2.2426, toleranceDegrees = 0.0001
+                46.4808001, 2.2426, 46.4808, 2.2426, toleranceDegrees = 0.0001
             )
         )
     }

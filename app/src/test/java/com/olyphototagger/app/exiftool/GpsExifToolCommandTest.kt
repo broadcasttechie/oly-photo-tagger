@@ -9,13 +9,13 @@ class GpsExifToolCommandTest {
 
     @Test
     fun `builds full argv for a northern eastern hemisphere coordinate`() {
-        val args = GpsExifToolCommand.build("/tmp/photo.orf", latitude = 53.4808, longitude = -2.2426)
+        val args = GpsExifToolCommand.build("/tmp/photo.orf", latitude = 46.4808, longitude = -5.2426)
 
         assertEquals(
             listOf(
-                "-GPSLatitude=53.4808000",
+                "-GPSLatitude=46.4808000",
                 "-GPSLatitudeRef=N",
-                "-GPSLongitude=2.2426000",
+                "-GPSLongitude=5.2426000",
                 "-GPSLongitudeRef=W",
                 "-GPSStatus#=A",
                 "-overwrite_original",
@@ -70,8 +70,8 @@ class GpsExifToolCommandTest {
         val originalDefault = java.util.Locale.getDefault()
         try {
             java.util.Locale.setDefault(java.util.Locale.GERMANY) // comma decimal separator
-            val args = GpsExifToolCommand.build("/tmp/x.orf", 53.4808, -2.2426)
-            assertTrue(args.any { it == "-GPSLatitude=53.4808000" })
+            val args = GpsExifToolCommand.build("/tmp/x.orf", 46.4808, -5.2426)
+            assertTrue(args.any { it == "-GPSLatitude=46.4808000" })
             assertFalse(args.any { it.contains(",") })
         } finally {
             java.util.Locale.setDefault(originalDefault)

@@ -39,10 +39,10 @@ class OutOfSpaceGuardTest {
     private fun match(name: String, hasRaw: Boolean = true) = ProposedMatch(
         pair(name, hasRaw),
         Instant.parse("2026-08-11T12:00:00Z"),
-        GeoMatch.Matched(52.89, -2.20, 150.0, Duration.ofSeconds(2), Duration.ofSeconds(2))
+        GeoMatch.Matched(46.89, 2.20, 150.0, Duration.ofSeconds(2), Duration.ofSeconds(2))
     )
 
-    private val written = GpsExifWriteResult.Written(null, 52.89, -2.20, 150.0, Instant.now())
+    private val written = GpsExifWriteResult.Written(null, 46.89, 2.20, 150.0, Instant.now())
 
     @Test
     fun `a real ENOSPC failure is recognized`() {

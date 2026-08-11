@@ -55,8 +55,8 @@ class RealRawGpsWriteInstrumentedTest {
 
         val args = GpsExifToolCommand.build(
             targetPath = work.absolutePath,
-            latitude = 53.4808,
-            longitude = -2.2426,
+            latitude = 46.4808,
+            longitude = 2.2426,
             altitudeMeters = 38.0
         )
         val result = invoker.run(args)
@@ -65,8 +65,8 @@ class RealRawGpsWriteInstrumentedTest {
         val after = ExifInterface(work.absolutePath)
         val latLong = after.latLong
         assertNotNull("Expected GPS lat/long to be present after writing to the real RAW file", latLong)
-        assertEquals(53.4808, latLong!![0], 0.0001)
-        assertEquals(-2.2426, latLong[1], 0.0001)
+        assertEquals(46.4808, latLong!![0], 0.0001)
+        assertEquals(2.2426, latLong[1], 0.0001)
 
         // The write must not have corrupted the RAW's existing (real, non-GPS) metadata.
         assertEquals(makeBefore, after.getAttribute(ExifInterface.TAG_MAKE))

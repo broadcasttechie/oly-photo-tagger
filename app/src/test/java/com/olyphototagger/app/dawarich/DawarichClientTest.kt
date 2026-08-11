@@ -44,8 +44,8 @@ class DawarichClientTest {
         // second uses the newer decimal-column shape (string) — both appear in real data
         // depending on whether a given row has been backfilled.
         val body = """
-            [{"id":10320334,"latitude":"52.8901588","longitude":"-2.2047149","timestamp":1786280032,"altitude":120,"velocity":"0","country_name":"","tracker_id":"pixel6pro","battery":null,"geodata":{}},
-             {"id":10320333,"latitude":"52.890059","longitude":"-2.204761","timestamp":1786279969,"altitude":"119.5","velocity":"0","country_name":"","tracker_id":"pixel6pro","battery":null,"geodata":{}}]
+            [{"id":10320334,"latitude":"46.8901588","longitude":"2.2047149","timestamp":1786280032,"altitude":120,"velocity":"0","country_name":"","tracker_id":"pixel6pro","battery":null,"geodata":{}},
+             {"id":10320333,"latitude":"46.890059","longitude":"2.204761","timestamp":1786279969,"altitude":"119.5","velocity":"0","country_name":"","tracker_id":"pixel6pro","battery":null,"geodata":{}}]
         """.trimIndent()
         val engine = MockEngine { jsonResponse(this, body) }
         val client = DawarichClient(httpClientWith(engine), "https://dawarich.example", "test-token")
@@ -53,8 +53,8 @@ class DawarichClientTest {
         val points = client.fetchTrackPoints(Instant.EPOCH, Instant.now())
 
         assertEquals(2, points.size)
-        assertEquals(52.890059, points.first().latitude, 1e-9)
-        assertEquals(-2.204761, points.first().longitude, 1e-9)
+        assertEquals(46.890059, points.first().latitude, 1e-9)
+        assertEquals(2.204761, points.first().longitude, 1e-9)
         assertEquals(Instant.ofEpochSecond(1786279969), points.first().time)
         assertEquals(119.5, points.first().altitudeMeters!!, 1e-9)
         assertEquals(120.0, points.last().altitudeMeters!!, 1e-9)

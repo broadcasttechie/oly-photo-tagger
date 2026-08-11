@@ -51,8 +51,8 @@ class ExifToolInvokerInstrumentedTest {
 
         val args = GpsExifToolCommand.build(
             targetPath = jpeg.absolutePath,
-            latitude = 53.4808,
-            longitude = -2.2426,
+            latitude = 46.4808,
+            longitude = 2.2426,
             altitudeMeters = 38.0
         )
         val result = invoker.run(args)
@@ -60,8 +60,8 @@ class ExifToolInvokerInstrumentedTest {
 
         val latLong = ExifInterface(jpeg.absolutePath).latLong
         assertTrue("Expected GPS lat/long to be present after write", latLong != null)
-        assertEquals(53.4808, latLong!![0], 0.0001)
-        assertEquals(-2.2426, latLong[1], 0.0001)
+        assertEquals(46.4808, latLong!![0], 0.0001)
+        assertEquals(2.2426, latLong[1], 0.0001)
 
         jpeg.delete()
     }

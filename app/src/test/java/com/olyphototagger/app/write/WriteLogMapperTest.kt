@@ -14,8 +14,8 @@ class WriteLogMapperTest {
     fun `Written with no previous tag maps coordinates and leaves detail null`() {
         val result = GpsExifWriteResult.Written(
             previousLatLong = null,
-            newLatitude = 53.4808,
-            newLongitude = -2.2426,
+            newLatitude = 46.4808,
+            newLongitude = 2.2426,
             newAltitudeMeters = 38.0,
             writtenAt = loggedAt
         )
@@ -28,8 +28,8 @@ class WriteLogMapperTest {
         assertEquals(loggedAt.toEpochMilli(), entity.loggedAtEpochMillis)
         assertNull(entity.previousLatitude)
         assertNull(entity.previousLongitude)
-        assertEquals(53.4808, entity.newLatitude!!, 0.0)
-        assertEquals(-2.2426, entity.newLongitude!!, 0.0)
+        assertEquals(46.4808, entity.newLatitude!!, 0.0)
+        assertEquals(2.2426, entity.newLongitude!!, 0.0)
         assertEquals(38.0, entity.newAltitudeMeters!!, 0.0)
         assertNull(entity.detail)
     }
@@ -37,17 +37,17 @@ class WriteLogMapperTest {
     @Test
     fun `Written overwriting an existing tag records the previous coordinates too`() {
         val result = GpsExifWriteResult.Written(
-            previousLatLong = 51.0 to -1.0,
-            newLatitude = 53.4808,
-            newLongitude = -2.2426,
+            previousLatLong = 45.0 to 1.0,
+            newLatitude = 46.4808,
+            newLongitude = 2.2426,
             newAltitudeMeters = null,
             writtenAt = loggedAt
         )
 
         val entity = WriteLogMapper.from("100OLYMP", "P8080743.JPG", result, loggedAt)
 
-        assertEquals(51.0, entity.previousLatitude!!, 0.0)
-        assertEquals(-1.0, entity.previousLongitude!!, 0.0)
+        assertEquals(45.0, entity.previousLatitude!!, 0.0)
+        assertEquals(1.0, entity.previousLongitude!!, 0.0)
         assertNull(entity.newAltitudeMeters)
     }
 
@@ -55,8 +55,8 @@ class WriteLogMapperTest {
     fun `Written with a stray backup notes it in detail without failing the entry`() {
         val result = GpsExifWriteResult.Written(
             previousLatLong = null,
-            newLatitude = 53.4808,
-            newLongitude = -2.2426,
+            newLatitude = 46.4808,
+            newLongitude = 2.2426,
             newAltitudeMeters = null,
             writtenAt = loggedAt,
             strayBackupFileName = "P8080743.JPG.bak"
@@ -70,13 +70,13 @@ class WriteLogMapperTest {
 
     @Test
     fun `SkippedAlreadyTagged records the existing coordinates as previous, no new ones`() {
-        val result = GpsExifWriteResult.SkippedAlreadyTagged(existingLatitude = 51.0, existingLongitude = -1.0)
+        val result = GpsExifWriteResult.SkippedAlreadyTagged(existingLatitude = 45.0, existingLongitude = 1.0)
 
         val entity = WriteLogMapper.from("100OLYMP", "P8080743.JPG", result, loggedAt)
 
         assertEquals(WriteLogResultType.SKIPPED_ALREADY_TAGGED.name, entity.resultType)
-        assertEquals(51.0, entity.previousLatitude!!, 0.0)
-        assertEquals(-1.0, entity.previousLongitude!!, 0.0)
+        assertEquals(45.0, entity.previousLatitude!!, 0.0)
+        assertEquals(1.0, entity.previousLongitude!!, 0.0)
         assertNull(entity.newLatitude)
         assertNull(entity.newLongitude)
     }

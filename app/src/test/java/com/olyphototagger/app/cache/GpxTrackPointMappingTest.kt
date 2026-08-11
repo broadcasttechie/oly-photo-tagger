@@ -12,8 +12,8 @@ class GpxTrackPointMappingTest {
     fun `round-trips through entity, whole-second precision`() {
         val point = TrackPoint(
             time = Instant.ofEpochSecond(1786280032),
-            latitude = 52.890059,
-            longitude = -2.204761,
+            latitude = 46.890059,
+            longitude = 2.204761,
             altitudeMeters = 158.4
         )
 

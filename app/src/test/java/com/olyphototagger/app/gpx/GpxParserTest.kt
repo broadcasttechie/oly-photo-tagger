@@ -22,7 +22,7 @@ class GpxParserTest {
               <trk>
                 <name>20260810</name>
                 <trkseg>
-                  <trkpt lat="52.8898949096583" lon="-2.2048472305329634">
+                  <trkpt lat="46.8898949096583" lon="2.2048472305329634">
                     <ele>175.54906656848235</ele>
                     <time>2026-08-09T23:00:41.189Z</time>
                     <geoidheight>49.5</geoidheight>
@@ -32,10 +32,10 @@ class GpxParserTest {
                     <vdop>1.0</vdop>
                     <pdop>3.1</pdop>
                   </trkpt>
-                  <trkpt lat="52.8898949"><ele>158.1</ele></trkpt>
+                  <trkpt lat="46.8898949"><ele>158.1</ele></trkpt>
                 </trkseg>
                 <trkseg>
-                  <trkpt lat="52.88999355550389" lon="-2.2047649470063333">
+                  <trkpt lat="46.88999355550389" lon="2.2047649470063333">
                     <ele>183.7580337908914</ele>
                     <time>2026-08-09T23:01:46.781Z</time>
                     <speed>0.0</speed>
@@ -52,8 +52,8 @@ class GpxParserTest {
         // across both <trkseg> into one list.
         assertEquals(2, points.size)
         assertEquals(Instant.parse("2026-08-09T23:00:41.189Z"), points[0].time)
-        assertEquals(52.8898949096583, points[0].latitude, 1e-9)
-        assertEquals(-2.2048472305329634, points[0].longitude, 1e-9)
+        assertEquals(46.8898949096583, points[0].latitude, 1e-9)
+        assertEquals(2.2048472305329634, points[0].longitude, 1e-9)
         assertEquals(175.54906656848235, points[0].altitudeMeters!!, 1e-9)
         assertEquals(Instant.parse("2026-08-09T23:01:46.781Z"), points[1].time)
     }
