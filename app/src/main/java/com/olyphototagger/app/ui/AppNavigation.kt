@@ -3,11 +3,18 @@ package com.olyphototagger.app.ui
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.olyphototagger.app.settings.SettingsRepository
 import com.olyphototagger.app.ui.settings.ChangeLogScreen
 import com.olyphototagger.app.ui.settings.ChangeLogViewModel
 import com.olyphototagger.app.ui.settings.GpsSourcesScreen
@@ -20,6 +27,8 @@ import com.olyphototagger.app.ui.workflow.HomeScreen
 import com.olyphototagger.app.ui.workflow.ProgressScreen
 import com.olyphototagger.app.ui.workflow.RecoveryScreen
 import com.olyphototagger.app.ui.workflow.SummaryScreen
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 @Composable
 fun AppNavigation(
@@ -39,6 +48,17 @@ fun AppNavigation(
         if (pendingShareUri != null) {
             navController.navigate(AppRoute.GPS_SOURCES)
         }
+    }
+
+    // No-warranty/data-loss disclaimer, shown once ever per install (see
+    // SettingsRepository.hasAcknowledgedDisclaimer) rather than folded into
+    // WorkflowUiState — it's app-level onboarding, not part of the scan/write workflow.
+    val context = LocalContext.current
+    val settingsRepository = remember { SettingsRepository(context) }
+    val scope = rememberCoroutineScope()
+    var showDisclaimer by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        showDisclaimer = !settingsRepository.hasAcknowledgedDisclaimer.first()
     }
 
     NavHost(navController = navController, startDestination = AppRoute.HOME) {
@@ -114,5 +134,14 @@ fun AppNavigation(
                 onBack = { navController.popBackStack() }
             )
         }
+    }
+
+    if (showDisclaimer) {
+        DisclaimerDialog(
+            onAcknowledge = {
+                showDisclaimer = false
+                scope.launch { settingsRepository.saveHasAcknowledgedDisclaimer() }
+            }
+        )
     }
 }

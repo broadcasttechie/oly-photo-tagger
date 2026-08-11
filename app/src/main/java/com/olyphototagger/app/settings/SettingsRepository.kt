@@ -1,6 +1,7 @@
 package com.olyphototagger.app.settings
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -28,6 +29,7 @@ class SettingsRepository(
         val LAST_CAMERA_OFFSET_SECONDS = intPreferencesKey("last_camera_offset_seconds")
         val LAST_DCIM_ROOT_URI = stringPreferencesKey("last_dcim_root_uri")
         val ACTIVE_GPS_SOURCE = stringPreferencesKey("active_gps_source")
+        val HAS_ACKNOWLEDGED_DISCLAIMER = booleanPreferencesKey("has_acknowledged_disclaimer")
     }
 
     val dawarichConfig: Flow<DawarichConfig?> = context.settingsDataStore.data.map { prefs ->
@@ -108,6 +110,17 @@ class SettingsRepository(
 
     suspend fun saveActiveGpsSource(type: GpsSourceType) {
         context.settingsDataStore.edit { prefs -> prefs[Keys.ACTIVE_GPS_SOURCE] = type.name }
+    }
+
+    /** Whether the user has dismissed the launch-time no-warranty/data-loss disclaimer.
+     *  False (including the never-set case) means it's still owed — shown again on every
+     *  launch until acknowledged once, then never again on this install. */
+    val hasAcknowledgedDisclaimer: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
+        prefs[Keys.HAS_ACKNOWLEDGED_DISCLAIMER] ?: false
+    }
+
+    suspend fun saveHasAcknowledgedDisclaimer() {
+        context.settingsDataStore.edit { prefs -> prefs[Keys.HAS_ACKNOWLEDGED_DISCLAIMER] = true }
     }
 
     companion object {

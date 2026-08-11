@@ -46,6 +46,15 @@ and the RAW's GPS data itself is complete and correct everywhere else). Root cau
 confirmed; not fixed, by deliberate choice, since a real fix trades away exiftool's
 maturity for hand-rolled binary format surgery over a cosmetic-only gap.
 
+## Disclaimer
+
+This app writes GPS data directly into your photo files, in place. It's built with real
+safeguards — see [Safeguards](#safeguards) above — and those have held up against real
+crashes and real full-storage failures during development, with zero data loss. But it
+comes with **no warranty**, and **no responsibility is accepted for any data loss**. Keep
+your own backups of anything irreplaceable before using it. The same notice is shown once
+in the app itself, on first launch.
+
 ## Stack
 
 Kotlin, Jetpack Compose, Material 3, Ktor client (Dawarich API), AndroidX ExifInterface,
