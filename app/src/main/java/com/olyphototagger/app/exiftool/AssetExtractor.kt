@@ -5,6 +5,8 @@ import android.system.Os
 import android.util.Log
 import com.olyphototagger.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -28,6 +30,18 @@ object AssetExtractor {
     private const val MARKER_FILE = "perl5.version"
     private const val XS_LINKED_DIR_FILE = "xs_linked.dir"
 
+    /**
+     * Guards [ensureInstalled]'s whole body — both the extraction and the XS-symlink
+     * rewiring are check-then-act against real files, with no locking of their own. Only
+     * matters the very first time this runs after an install/reinstall (every later call
+     * short-circuits on [isInstalled] alone, a pure read); before this existed, two writes
+     * kicked off together on a fresh install could both see "not installed" and race to
+     * `deleteRecursively()`/extract into the same destination directory at once, corrupting
+     * it — invisible until something calls concurrently, which nothing did until
+     * GeotagOrchestrator started resolving/writing files in parallel.
+     */
+    private val installMutex = Mutex()
+
     fun perl5Dir(context: Context): File =
         File(context.filesDir, "perl5")
 
@@ -49,28 +63,30 @@ object AssetExtractor {
     }
 
     suspend fun ensureInstalled(context: Context) = withContext(Dispatchers.IO) {
-        val dest = perl5Dir(context)
+        installMutex.withLock {
+            val dest = perl5Dir(context)
 
-        if (!isInstalled(context)) {
-            Log.d(TAG, "Extracting $ASSET_NAME (version ${BuildConfig.PERL5_ASSET_VERSION})")
-            if (dest.exists()) dest.deleteRecursively()
-            dest.mkdirs()
-            context.assets.open(ASSET_NAME).use { input -> TarReader.extract(input, dest) }
-            File(context.filesDir, MARKER_FILE).writeText(BuildConfig.PERL5_ASSET_VERSION.toString())
-            Log.d(TAG, "Extraction complete")
-        }
+            if (!isInstalled(context)) {
+                Log.d(TAG, "Extracting $ASSET_NAME (version ${BuildConfig.PERL5_ASSET_VERSION})")
+                if (dest.exists()) dest.deleteRecursively()
+                dest.mkdirs()
+                context.assets.open(ASSET_NAME).use { input -> TarReader.extract(input, dest) }
+                File(context.filesDir, MARKER_FILE).writeText(BuildConfig.PERL5_ASSET_VERSION.toString())
+                Log.d(TAG, "Extraction complete")
+            }
 
-        // Re-wire XS symlinks only when nativeLibraryDir has actually changed (every
-        // `adb install -r` and every reinstall randomizes that path, but a normal app
-        // resume doesn't). The path is stamped after a successful wire-up; if it
-        // matches the current one, all symlinks are still valid.
-        val currentLibDir = context.applicationInfo.nativeLibraryDir
-        val stampFile = File(context.filesDir, XS_LINKED_DIR_FILE)
-        if (stampFile.exists() && stampFile.readText().trim() == currentLibDir) {
-            return@withContext
+            // Re-wire XS symlinks only when nativeLibraryDir has actually changed (every
+            // `adb install -r` and every reinstall randomizes that path, but a normal app
+            // resume doesn't). The path is stamped after a successful wire-up; if it
+            // matches the current one, all symlinks are still valid.
+            val currentLibDir = context.applicationInfo.nativeLibraryDir
+            val stampFile = File(context.filesDir, XS_LINKED_DIR_FILE)
+            if (stampFile.exists() && stampFile.readText().trim() == currentLibDir) {
+                return@withLock
+            }
+            wireUpXsModules(dest, currentLibDir)
+            stampFile.writeText(currentLibDir)
         }
-        wireUpXsModules(dest, currentLibDir)
-        stampFile.writeText(currentLibDir)
     }
 
     /**

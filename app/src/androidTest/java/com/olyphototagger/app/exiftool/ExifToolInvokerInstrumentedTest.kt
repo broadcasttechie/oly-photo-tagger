@@ -4,8 +4,11 @@ import android.graphics.Bitmap
 import androidx.exifinterface.media.ExifInterface
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -61,6 +64,41 @@ class ExifToolInvokerInstrumentedTest {
         assertEquals(-2.2426, latLong[1], 0.0001)
 
         jpeg.delete()
+    }
+
+    /**
+     * Regression test for a real race condition: [AssetExtractor.ensureInstalled] used to
+     * have no locking around its check-then-act "am I installed? if not, delete and
+     * re-extract" logic. That's invisible on a warm install (every call short-circuits on
+     * a pure read), so it only ever mattered the first time anything called it after a
+     * fresh install — which nothing did concurrently until GeotagOrchestrator started
+     * resolving/writing files in parallel. Forces that exact fresh-install race window,
+     * fires several concurrent calls into it, and confirms the result is still a genuinely
+     * working install — not just a marker file claiming so.
+     */
+    @Test
+    fun concurrentEnsureInstalledCallsOnAFreshInstallDoNotCorruptTheExtraction(): Unit = runBlocking {
+        AssetExtractor.perl5Dir(context).deleteRecursively()
+        File(context.filesDir, "perl5.version").delete()
+        File(context.filesDir, "xs_linked.dir").delete()
+        assertFalse("Test setup should have produced a genuinely fresh, not-installed state", invoker.isInstalled())
+
+        coroutineScope {
+            repeat(8) {
+                launch { invoker.ensureInstalled() }
+            }
+        }
+
+        assertTrue(
+            "Expected a fully installed, uncorrupted extraction after concurrent calls raced for it",
+            invoker.isInstalled()
+        )
+        val result = invoker.run(listOf("-ver"))
+        assertEquals(
+            "exiftool -ver should still succeed against the concurrently-installed runtime, output was: ${result.output}",
+            0,
+            result.exitCode
+        )
     }
 
     private fun perlBinaryPath() = "${context.applicationInfo.nativeLibraryDir}/libperl.so"
