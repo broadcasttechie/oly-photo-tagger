@@ -61,6 +61,17 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // keystore/release.jks itself is gitignored (real secret, unlike the debug
+        // keystore above) — only its password ever needs to exist outside this repo,
+        // via RELEASE_STORE_PASSWORD. Every future release must be signed with this
+        // same key for Android to accept it as an update, so don't regenerate this
+        // file once a real release has shipped.
+        create("release") {
+            storeFile = rootProject.file("keystore/release.jks")
+            storePassword = System.getenv("RELEASE_STORE_PASSWORD")
+            keyAlias = "release"
+            keyPassword = System.getenv("RELEASE_STORE_PASSWORD")
+        }
     }
 
     buildTypes {
@@ -70,6 +81,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Falls back to unsigned when RELEASE_STORE_PASSWORD isn't set, rather
+            // than failing the build — lets assembleRelease still work (unsigned) on
+            // a machine/CI job that has no reason to hold the real release key.
+            if (System.getenv("RELEASE_STORE_PASSWORD") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {
