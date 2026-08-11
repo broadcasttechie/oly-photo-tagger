@@ -18,6 +18,13 @@ import java.time.Instant
  *  it was opened (the write survives navigation, see [GeotagWorkflowViewModel.startRun]). */
 data class RunProgress(val completed: Int, val total: Int, val currentAction: String, val startedAt: Instant)
 
+/** Live progress for [GeotagWorkflowViewModel.runPreScan]'s per-pair status checks — the
+ *  slow part of a prescan (see [GeotagOrchestrator.preScan]'s own doc). Null until the
+ *  first pair resolves: [total] isn't known during the folder-listing/pairing phase just
+ *  before it, which is normally brief but isn't nothing on a large folder. [startedAt] is
+ *  carried unchanged on every update, same reasoning as [RunProgress.startedAt]. */
+data class ScanProgress(val completed: Int, val total: Int, val startedAt: Instant)
+
 /**
  * All state for the Home -> dry-run -> progress -> summary journey, in one place since
  * it's genuinely one continuous workflow with accumulating state — not four independent
@@ -47,6 +54,7 @@ data class WorkflowUiState(
     val dateRangeEnd: Instant? = null,
     val isBusy: Boolean = false,
     val busyMessage: String? = null,
+    val scanProgress: ScanProgress? = null,
     val preScanSummary: PreScanSummary? = null,
     val scanResult: ScanResult? = null,
     /** Pairs the user has explicitly excluded from the upcoming write, keyed by

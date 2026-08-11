@@ -13,6 +13,7 @@ import com.olyphototagger.app.cache.WriteLogResultType
 import com.olyphototagger.app.ui.settings.GpxFileUiState
 import com.olyphototagger.app.ui.settings.WriteLogEntryUiState
 import com.olyphototagger.app.ui.workflow.RunProgress
+import com.olyphototagger.app.ui.workflow.ScanProgress
 import com.olyphototagger.app.write.GpsExifWriteResult
 import com.olyphototagger.app.write.IncompleteWrite
 import com.olyphototagger.app.write.IncompleteWriteClassification
@@ -100,6 +101,12 @@ internal object PreviewFixtures {
         total = 5,
         currentAction = "Wrote P8080744",
         startedAt = Instant.now().minusSeconds(12)
+    )
+
+    val scanProgress = ScanProgress(
+        completed = 340,
+        total = 1000,
+        startedAt = Instant.now().minusSeconds(40)
     )
 
     val runDuration: Duration = Duration.ofSeconds(47)

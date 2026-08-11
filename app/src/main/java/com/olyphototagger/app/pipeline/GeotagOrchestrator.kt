@@ -95,9 +95,10 @@ class GeotagOrchestrator(
     suspend fun preScan(
         dcimRoot: DocumentFile,
         assumedOffsetForNaiveTimestamps: ZoneOffset,
-        dateRange: ClosedRange<Instant>? = null
+        dateRange: ClosedRange<Instant>? = null,
+        onProgress: suspend (completed: Int, total: Int) -> Unit = { _, _ -> }
     ): PreScanSummary {
-        val c = classify(dcimRoot, assumedOffsetForNaiveTimestamps, dateRange, includeAlreadyTagged = false)
+        val c = classify(dcimRoot, assumedOffsetForNaiveTimestamps, dateRange, includeAlreadyTagged = false, onProgress = onProgress)
         return PreScanSummary(
             needsTagging = c.included.size,
             alreadyTagged = c.excluded.count { it.reason == ExcludeReason.ALREADY_TAGGED },
@@ -119,12 +120,13 @@ class GeotagOrchestrator(
         dcimRoot: DocumentFile,
         assumedOffsetForNaiveTimestamps: ZoneOffset,
         dateRange: ClosedRange<Instant>?,
-        includeAlreadyTagged: Boolean
+        includeAlreadyTagged: Boolean,
+        onProgress: suspend (completed: Int, total: Int) -> Unit = { _, _ -> }
     ): Classification {
         val scan = dcimScanner.scan(dcimRoot)
         val pairing = PhotoPairer.pair(scan.files)
 
-        val statuses = resolveStatusesConcurrently(pairing.pairs, scan, assumedOffsetForNaiveTimestamps)
+        val statuses = resolveStatusesConcurrently(pairing.pairs, scan, assumedOffsetForNaiveTimestamps, onProgress)
 
         val included = mutableListOf<Pair<PhotoPair, Instant>>()
         val excluded = mutableListOf<ExcludedPair>()
@@ -152,16 +154,24 @@ class GeotagOrchestrator(
      * hundreds/thousands of simultaneous SAF file opens would mostly just queue up behind
      * the OS's own binder thread pool anyway, or risk overwhelming the storage provider
      * process for no real gain over a bounded number running at a time.
+     *
+     * [onProgress] fires once per resolved pair, in completion order rather than [pairs]'
+     * order (same reasoning as [applyMatches]' [onEachResult]) — lets [preScan]'s caller
+     * drive a live "N of M" + ETA without this function needing to know anything about it.
      */
     private suspend fun resolveStatusesConcurrently(
         pairs: List<PhotoPair>,
         scan: DcimScanResult,
-        assumedOffsetForNaiveTimestamps: ZoneOffset
+        assumedOffsetForNaiveTimestamps: ZoneOffset,
+        onProgress: suspend (completed: Int, total: Int) -> Unit
     ): List<Pair<PhotoPair, PairGeoStatus>> = coroutineScope {
         val semaphore = Semaphore(MAX_CONCURRENT_STATUS_CHECKS)
+        val completedCount = AtomicInteger(0)
         pairs.map { pair ->
             async {
-                semaphore.withPermit { pair to resolvePairStatus(pair, scan, assumedOffsetForNaiveTimestamps) }
+                val status = semaphore.withPermit { resolvePairStatus(pair, scan, assumedOffsetForNaiveTimestamps) }
+                onProgress(completedCount.incrementAndGet(), pairs.size)
+                pair to status
             }
         }.awaitAll()
     }

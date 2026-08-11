@@ -154,16 +154,45 @@ private fun HomeScreenContent(
                 // (e.g. checking hundreds of files for interrupted writes) had no visible
                 // sign of life unless already scrolled all the way down.
                 if (uiState.isBusy) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    val scanProgress = uiState.scanProgress
+                    // Indeterminate until scanProgress has a real total to show a fraction
+                    // of — true for every other busy operation (recovery check, dry-run
+                    // match), and for a prescan's own brief folder-listing/pairing phase
+                    // before its first per-pair status check completes.
+                    if (scanProgress != null && scanProgress.total > 0) {
+                        LinearProgressIndicator(
+                            progress = { scanProgress.completed / scanProgress.total.toFloat() },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            uiState.busyMessage ?: "Working…",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                        Column {
+                            Text(
+                                uiState.busyMessage ?: "Working…",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            if (scanProgress != null) {
+                                Text(
+                                    "${scanProgress.completed} of ${scanProgress.total} checked",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                estimateRemaining(scanProgress.completed, scanProgress.total, scanProgress.startedAt)
+                                    ?.let { remaining ->
+                                        Text(
+                                            "About ${formatDuration(remaining)} remaining",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                            }
+                        }
                     }
                 }
             }
@@ -307,6 +336,26 @@ private fun HomeScreenBusyPreview() {
                 rootDisplayName = "DCIM",
                 isBusy = true,
                 busyMessage = "Checking for interrupted writes…"
+            ),
+            snackbarHostState = remember { SnackbarHostState() },
+            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
+            onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {},
+            onSetOffsetSeconds = {}, onDryRun = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Busy — scanning with progress")
+@Composable
+private fun HomeScreenScanProgressPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        HomeScreenContent(
+            uiState = WorkflowUiState(
+                rootUri = android.net.Uri.parse("content://fake/DCIM"),
+                rootDisplayName = "DCIM",
+                isBusy = true,
+                busyMessage = "Scanning for photos missing GPS tags…",
+                scanProgress = PreviewFixtures.scanProgress
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},

@@ -283,8 +283,9 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
 
     suspend fun runPreScan(): Boolean {
         val root = _uiState.value.rootUri ?: return false
+        val startedAt = Instant.now()
         _uiState.update {
-            it.copy(isBusy = true, busyMessage = "Scanning for photos missing GPS tags…")
+            it.copy(isBusy = true, busyMessage = "Scanning for photos missing GPS tags…", scanProgress = null)
         }
         val orchestrator = buildOrchestrator()
         if (orchestrator == null) {
@@ -294,11 +295,13 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
         }
         return try {
             val dcimRoot = requireNotNull(DocumentFile.fromTreeUri(context, root)) { "Could not open $root" }
-            val summary = orchestrator.preScan(dcimRoot, currentOffset(), currentDateRange())
-            _uiState.update { it.copy(isBusy = false, busyMessage = null, preScanSummary = summary) }
+            val summary = orchestrator.preScan(dcimRoot, currentOffset(), currentDateRange()) { completed, total ->
+                _uiState.update { it.copy(scanProgress = ScanProgress(completed, total, startedAt)) }
+            }
+            _uiState.update { it.copy(isBusy = false, busyMessage = null, scanProgress = null, preScanSummary = summary) }
             true
         } catch (e: Exception) {
-            _uiState.update { it.copy(isBusy = false, busyMessage = null) }
+            _uiState.update { it.copy(isBusy = false, busyMessage = null, scanProgress = null) }
             _events.tryEmit("Prescan failed: ${e.message}")
             false
         }

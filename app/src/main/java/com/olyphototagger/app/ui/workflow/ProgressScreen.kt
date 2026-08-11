@@ -26,8 +26,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.olyphototagger.app.ui.PreviewFixtures
 import com.olyphototagger.app.ui.theme.OlyPhotoTaggerTheme
-import java.time.Duration
-import java.time.Instant
 
 /**
  * Purely observational — the write batch is already running in the ViewModel's own
@@ -105,7 +103,7 @@ private fun ProgressScreenContent(
                 )
                 // No rate to estimate from until at least one write has actually finished —
                 // showing a guess before then would just be noise during "Starting…".
-                estimateRemaining(progress)?.let { remaining ->
+                estimateRemaining(progress.completed, progress.total, progress.startedAt)?.let { remaining ->
                     Text(
                         "About ${formatDuration(remaining)} remaining",
                         style = MaterialTheme.typography.bodySmall,
@@ -122,21 +120,6 @@ private fun ProgressScreenContent(
             )
         }
     }
-}
-
-/**
- * Projects from the batch's own observed rate so far — elapsed time since [RunProgress
- * .startedAt] divided by how many have completed — rather than any fixed per-file assumption,
- * since actual write cost varies a lot by file size/format and even by how many writes are
- * running concurrently at once. Null before the first completion, when there's no rate yet
- * to project from.
- */
-private fun estimateRemaining(progress: RunProgress): Duration? {
-    if (progress.completed <= 0) return null
-    val remaining = progress.total - progress.completed
-    if (remaining <= 0) return Duration.ZERO
-    val elapsed = Duration.between(progress.startedAt, Instant.now())
-    return elapsed.dividedBy(progress.completed.toLong()).multipliedBy(remaining.toLong())
 }
 
 @Preview(showBackground = true, name = "In progress")
