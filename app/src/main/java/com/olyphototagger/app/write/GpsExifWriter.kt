@@ -117,6 +117,23 @@ class GpsExifWriter(
         val temp = parent.createFile(mimeType ?: "application/octet-stream", tempName)
             ?: return@withContext GpsExifWriteResult.Failed("Could not create temp file $tempName")
 
+        // Every failure path below this point leaves temp abandoned unless it explicitly
+        // cleans up after itself — confirmed on-device (2026-08-11, a real SD card running
+        // out of mid-batch): an exiftool write failing with ENOSPC left a stray, partially
+        // written temp file behind every time, since the old code only ever converted the
+        // exception to a Failed result. Harmless (the original is never touched, and the
+        // *next* write attempt on this file would find and clean it up via strayArtifacts
+        // anyway) but needless clutter — worse, it happens most under exactly the
+        // "running low on space" condition where leaving more files around is backwards.
+        // Never call this once SafeFileSwap.swap() has reported Success: on some SAF
+        // providers renameTo() mutates the handle's own target in place, so temp.delete()
+        // after a successful rename could delete the file now sitting at the *original's*
+        // name instead of a leftover.
+        fun failedAndCleanUp(reason: String, cause: IOException? = null): GpsExifWriteResult {
+            temp.delete()
+            return GpsExifWriteResult.Failed(reason, cause)
+        }
+
         try {
             if (useExifTool) {
                 writeViaExifTool(original.uri, temp.uri, extension, latitude, longitude, altitudeMeters)
@@ -126,16 +143,14 @@ class GpsExifWriter(
             }
 
             val verified = readLatLong(temp.uri)
-                ?: return@withContext GpsExifWriteResult.Failed(
-                    "Verification read GPS tags back as null after writing"
-                )
+                ?: return@withContext failedAndCleanUp("Verification read GPS tags back as null after writing")
             if (!GpsWriteSupport.coordinatesMatch(verified.first, verified.second, latitude, longitude)) {
-                return@withContext GpsExifWriteResult.Failed(
+                return@withContext failedAndCleanUp(
                     "Verification mismatch: wrote ($latitude, $longitude), read back $verified"
                 )
             }
             if (temp.length() <= 0L) {
-                return@withContext GpsExifWriteResult.Failed("Temp file is empty after write")
+                return@withContext failedAndCleanUp("Temp file is empty after write")
             }
 
             when (val swapResult = SafeFileSwap.swap(parent, original, temp, originalName)) {
@@ -148,10 +163,18 @@ class GpsExifWriter(
                     strayBackupFileName = swapResult.strayBackupFileName
                 )
                 // The original is still present, untouched, under its real name — same
-                // safe territory as any other Failed result.
+                // safe territory as any other Failed result. temp was never renamed
+                // (BackupRenameFailed means the rename attempt never got past renaming
+                // *original*), so it's still this call's leftover to clean up.
                 is SwapResult.BackupRenameFailed ->
-                    GpsExifWriteResult.Failed("Could not rename original to a backup: ${swapResult.reason}")
+                    failedAndCleanUp("Could not rename original to a backup: ${swapResult.reason}")
                 is SwapResult.FinalRenameFailed, is SwapResult.FinalRenameUnverified ->
+                    // Deliberately NOT cleaned up here, unlike the cases above: original is
+                    // already renamed to backupName by this point, so temp (whatever state
+                    // it's actually in — the rename call itself may or may not have taken)
+                    // is the only other lead on the tagged result. This is exactly the
+                    // ambiguous state IncompleteWriteRecoverer/the Recovery screen exist to
+                    // resolve with the user, not something safe to silently discard.
                     // temp.name (the live handle's real current name), not the asked-for
                     // tempName string — SAF can silently rename what it's given on create
                     // (see parseArtifactName's doc), so tempName may not be what's actually
@@ -159,7 +182,11 @@ class GpsExifWriter(
                     GpsExifWriteResult.NeedsRecovery(temp.name ?: tempName, backupName)
             }
         } catch (e: IOException) {
-            GpsExifWriteResult.Failed("I/O error: ${e.message}", e)
+            // Reached only from the writeViaExifTool/copyBytes/writeGpsAttributes calls
+            // above — SafeFileSwap.swap() itself never throws (DocumentFile's rename/
+            // delete/findFile all report failure via return values, not exceptions), so an
+            // IOException here always means temp was never handed off to it.
+            failedAndCleanUp("I/O error: ${e.message}", e)
         }
     }
 

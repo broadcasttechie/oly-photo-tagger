@@ -64,4 +64,45 @@ class GpsExifWriterJpegInstrumentedTest {
         assertTrue("Expected the file to still exist under its original name after rename", work.exists())
         assertEquals("Expected exactly one file in the work dir (no stray .tmp)", 1, workDir.listFiles()?.size)
     }
+
+    /**
+     * Regression test for a real bug (2026-08-11, a real SD card that filled up mid-batch
+     * on-device): a write failing partway through — after its temp file was created, but
+     * before SafeFileSwap ever got to consume it — used to leave that temp file behind.
+     * Harmless (the original is never touched, and it's a recognized orphan the next write
+     * attempt on this file would clean up anyway) but needless clutter, worse under
+     * exactly the "running low on space" condition where it's most likely to happen.
+     *
+     * No staged sample needed, unlike the test above — deliberately garbage bytes under a
+     * .JPG name get exiftool to fail for real (not a valid JPEG it can write into), the
+     * same class of genuine mid-write failure as the real ENOSPC this was found from,
+     * without needing to actually exhaust storage to reproduce it.
+     */
+    @Test
+    fun aFailedWriteCleansUpItsOwnTempFile(): Unit = runBlocking {
+        val workDir = File(context.getExternalFilesDir(null), "jpeg_write_failure_test")
+        workDir.deleteRecursively()
+        workDir.mkdirs()
+        val work = File(workDir, "P_corrupt.JPG").apply { writeBytes("not actually a jpeg".toByteArray()) }
+
+        val writer = GpsExifWriter(
+            context.contentResolver,
+            ExifToolInvoker(context),
+            context.cacheDir
+        )
+        val workDirDoc = DocumentFile.fromFile(workDir)
+        val original = requireNotNull(workDirDoc.listFiles().find { it.name == work.name }) {
+            "Could not find ${work.name} via DocumentFile.listFiles()"
+        }
+
+        val result = writer.write(original = original, latitude = 53.4808, longitude = -2.2426)
+
+        assertTrue("Expected Failed for a genuinely invalid JPEG, got $result", result is GpsExifWriteResult.Failed)
+        assertTrue("Original should be untouched", work.exists())
+        assertEquals(
+            "Expected exactly one file left in the work dir — the untouched original, no leftover .tmp",
+            1,
+            workDir.listFiles()?.size
+        )
+    }
 }
