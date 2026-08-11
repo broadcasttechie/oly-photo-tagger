@@ -6,13 +6,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -24,11 +27,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -40,6 +43,18 @@ import com.olyphototagger.app.write.IncompleteWriteClassification
 import com.olyphototagger.app.write.RecoveryChoice
 import com.olyphototagger.app.write.RecoveryOptions
 import kotlinx.coroutines.launch
+
+/**
+ * Stable identity for a LazyColumn item key — needed because [IncompleteWrite] itself
+ * isn't Bundle-compatible (Compose requires a key be storable in a Bundle for its own
+ * scroll-position/state saving, and a plain data class holding [CameraFile]/[java.time
+ * .Instant] properties doesn't qualify). Confirmed on a real device (2026-08-11, a batch
+ * of 220 real recoveries): passing the whole item as the key threw
+ * `IllegalArgumentException: Type of the key ... is not supported` immediately on
+ * opening this screen — every classification groups by (folderName, recoveredName), see
+ * IncompleteWriteDetector, so this is already guaranteed unique per item in the list.
+ */
+private fun IncompleteWrite.stableKey(): String = "$folderName/$recoveredName"
 
 /**
  * Lets the user resolve any interrupted writes GeotagWorkflowViewModel found — see
@@ -57,10 +72,29 @@ fun RecoveryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    // Tracks which bulk actions are currently in flight, purely to disable/spin their own
+    // button — the actual resolving happens item-by-item in the ViewModel regardless, this
+    // is just to stop a double-tap firing the same bulk action twice while it's still
+    // running (harmless either way — resolving an already-resolved item is a no-op — but
+    // wasteful and would double-count the summary message). Set right before launching and
+    // cleared in `finally` once resolveAllUnambiguous genuinely finishes, so this always
+    // reflects the real coroutine state rather than something inferred from the list.
+    var resolvingAll by remember { mutableStateOf<Set<IncompleteWriteClassification>>(emptySet()) }
     RecoveryScreenContent(
         pendingRecoveries = uiState.pendingRecoveries,
+        resolvingAll = resolvingAll,
         onBack = onBack,
-        onResolve = { item, choice -> scope.launch { viewModel.resolveIncompleteWrite(item, choice) } }
+        onResolve = { item, choice -> scope.launch { viewModel.resolveIncompleteWrite(item, choice) } },
+        onResolveAll = { classification ->
+            resolvingAll = resolvingAll + classification
+            scope.launch {
+                try {
+                    viewModel.resolveAllUnambiguous(classification)
+                } finally {
+                    resolvingAll = resolvingAll - classification
+                }
+            }
+        }
     )
 }
 
@@ -72,8 +106,10 @@ fun RecoveryScreen(
 @Composable
 private fun RecoveryScreenContent(
     pendingRecoveries: List<IncompleteWrite>,
+    resolvingAll: Set<IncompleteWriteClassification>,
     onBack: () -> Unit,
-    onResolve: (IncompleteWrite, RecoveryChoice) -> Unit
+    onResolve: (IncompleteWrite, RecoveryChoice) -> Unit,
+    onResolveAll: (IncompleteWriteClassification) -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -94,31 +130,87 @@ private fun RecoveryScreenContent(
             return@Scaffold
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
+        // Grouped so a batch that's overwhelmingly one trivial case (e.g. 200 stray temp
+        // files from a card that ran out of space mid-batch) gets a single one-tap fix at
+        // the top, instead of forcing the same tap 200 times over — see
+        // GeotagWorkflowViewModel.resolveAllUnambiguous's own doc for why this matters.
+        val groups = pendingRecoveries.groupBy { it.classification }
+        val bulkEligibleGroups = groups.filterKeys { RecoveryOptions.unambiguousChoiceFor(it) != null }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            item {
+                Text(
+                    "An earlier write on ${pendingRecoveries.size} photo${if (pendingRecoveries.size == 1) "" else "s"} " +
+                        "didn't finish — most likely the app was closed or crashed mid-write. Nothing has been lost; " +
+                        "choose how to resolve each one below.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            if (bulkEligibleGroups.isNotEmpty()) {
+                items(bulkEligibleGroups.entries.toList(), key = { "bulk-${it.key}" }) { (classification, items) ->
+                    BulkActionCard(
+                        classification = classification,
+                        count = items.size,
+                        isResolving = classification in resolvingAll,
+                        onResolveAll = { onResolveAll(classification) }
+                    )
+                }
+            }
+
+            items(pendingRecoveries, key = { it.stableKey() }) { item ->
+                RecoveryItemCard(item = item, onResolve = { choice -> onResolve(item, choice) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun BulkActionCard(
+    classification: IncompleteWriteClassification,
+    count: Int,
+    isResolving: Boolean,
+    onResolveAll: () -> Unit
+) {
+    var showConfirm by remember { mutableStateOf(false) }
+    val choice = RecoveryOptions.unambiguousChoiceFor(classification) ?: return
+
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                "An earlier write on ${pendingRecoveries.size} photo${if (pendingRecoveries.size == 1) "" else "s"} " +
-                    "didn't finish — most likely the app was closed or crashed mid-write. Nothing has been lost; " +
-                    "choose how to resolve each one below.",
-                style = MaterialTheme.typography.bodyMedium
+                "$count file${if (count == 1) "" else "s"} — same situation",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
             )
-            pendingRecoveries.forEach { item ->
-                // Keyed by the item itself (a data class, so folderName+recoveredName+...
-                // determine equality), not the loop's positional index — without this,
-                // RecoveryItemCard's own remembered pendingConfirmChoice can attach to the
-                // wrong card after an earlier item in the list is resolved and removed,
-                // since Compose would otherwise reuse slot state by position alone.
-                key(item) {
-                    RecoveryItemCard(item = item, onResolve = { choice -> onResolve(item, choice) })
+            Text(
+                explanationFor(classification),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { showConfirm = true }, enabled = !isResolving) {
+                    Text("${labelFor(choice)} — all $count")
+                }
+                if (isResolving) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                 }
             }
         }
+    }
+
+    if (showConfirm) {
+        AlertDialog(
+            onDismissRequest = { showConfirm = false },
+            title = { Text("${labelFor(choice)} for all $count files?") },
+            text = { Text("This applies to every file in this group at once. This can't be undone.") },
+            confirmButton = {
+                TextButton(onClick = { onResolveAll(); showConfirm = false }) { Text(labelFor(choice)) }
+            },
+            dismissButton = { TextButton(onClick = { showConfirm = false }) { Text("Cancel") } }
+        )
     }
 }
 
@@ -215,7 +307,27 @@ private fun confirmationTextFor(choice: RecoveryChoice): String = when (choice) 
 @Composable
 private fun RecoveryScreenPreview() {
     OlyPhotoTaggerTheme(dynamicColor = false) {
-        RecoveryScreenContent(pendingRecoveries = PreviewFixtures.pendingRecoveries, onBack = {}, onResolve = { _, _ -> })
+        RecoveryScreenContent(
+            pendingRecoveries = PreviewFixtures.pendingRecoveries,
+            resolvingAll = emptySet(),
+            onBack = {},
+            onResolve = { _, _ -> },
+            onResolveAll = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Large batch, bulk-eligible")
+@Composable
+private fun RecoveryScreenLargeBatchPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        RecoveryScreenContent(
+            pendingRecoveries = PreviewFixtures.manyPendingRecoveries,
+            resolvingAll = emptySet(),
+            onBack = {},
+            onResolve = { _, _ -> },
+            onResolveAll = {}
+        )
     }
 }
 
@@ -223,6 +335,12 @@ private fun RecoveryScreenPreview() {
 @Composable
 private fun RecoveryScreenEmptyPreview() {
     OlyPhotoTaggerTheme(dynamicColor = false) {
-        RecoveryScreenContent(pendingRecoveries = emptyList(), onBack = {}, onResolve = { _, _ -> })
+        RecoveryScreenContent(
+            pendingRecoveries = emptyList(),
+            resolvingAll = emptySet(),
+            onBack = {},
+            onResolve = { _, _ -> },
+            onResolveAll = {}
+        )
     }
 }

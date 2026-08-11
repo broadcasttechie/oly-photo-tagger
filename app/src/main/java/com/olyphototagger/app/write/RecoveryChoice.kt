@@ -58,4 +58,15 @@ object RecoveryOptions {
      */
     fun suggestedDefault(classification: IncompleteWriteClassification): RecoveryChoice? =
         if (classification == IncompleteWriteClassification.AwaitingChoice) RecoveryChoice.COMPLETE_TAGGING else null
+
+    /**
+     * The one choice for a classification that has exactly one — null for anything
+     * requiring a real decision between alternatives (including [AwaitingChoice], despite
+     * it having a [suggestedDefault]: a suggestion is still a choice being made on the
+     * user's behalf, not the only possible outcome). Gates which classifications the
+     * Recovery screen can offer a bulk "resolve all N" shortcut for — applying this to a
+     * classification with more than one choice would silently pick one without asking.
+     */
+    fun unambiguousChoiceFor(classification: IncompleteWriteClassification): RecoveryChoice? =
+        choicesFor(classification).singleOrNull()
 }

@@ -20,12 +20,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -139,14 +139,34 @@ private fun HomeScreenContent(
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Oly Photo Tagger") },
-                actions = {
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+            Column {
+                TopAppBar(
+                    title = { Text("Oly Photo Tagger") },
+                    actions = {
+                        IconButton(onClick = onNavigateToSettings) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        }
+                    }
+                )
+                // Pinned directly under the title bar, not scrolled with the rest of the
+                // content below — this used to be the last item in the scrollable column,
+                // after the recovery banner and every card, which meant a long-running scan
+                // (e.g. checking hundreds of files for interrupted writes) had no visible
+                // sign of life unless already scrolled all the way down.
+                if (uiState.isBusy) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            uiState.busyMessage ?: "Working…",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                 }
-            )
+            }
         },
         snackbarHost = {
             SnackbarHost(snackbarHostState) { data ->
@@ -202,13 +222,6 @@ private fun HomeScreenContent(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Preview Changes (Dry Run)")
-            }
-
-            if (uiState.isBusy) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                    Text(uiState.busyMessage.orEmpty(), style = MaterialTheme.typography.bodyMedium)
-                }
             }
         }
     }
@@ -275,6 +288,25 @@ private fun HomeScreenRecoveryPreview() {
                 rootUri = android.net.Uri.parse("content://fake/DCIM"),
                 rootDisplayName = "DCIM",
                 pendingRecoveries = PreviewFixtures.pendingRecoveries
+            ),
+            snackbarHostState = remember { SnackbarHostState() },
+            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
+            onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {},
+            onSetOffsetSeconds = {}, onDryRun = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Busy — checking for interrupted writes")
+@Composable
+private fun HomeScreenBusyPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        HomeScreenContent(
+            uiState = WorkflowUiState(
+                rootUri = android.net.Uri.parse("content://fake/DCIM"),
+                rootDisplayName = "DCIM",
+                isBusy = true,
+                busyMessage = "Checking for interrupted writes…"
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},

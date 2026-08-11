@@ -83,4 +83,34 @@ class RecoveryOptionsTest {
             }
         }
     }
+
+    @Test
+    fun `unambiguousChoiceFor returns the single choice for StaleTempOnly and BackupOnly`() {
+        assertEquals(
+            RecoveryChoice.DISCARD_TEMP,
+            RecoveryOptions.unambiguousChoiceFor(IncompleteWriteClassification.StaleTempOnly)
+        )
+        assertEquals(
+            RecoveryChoice.RESTORE_FROM_BACKUP,
+            RecoveryOptions.unambiguousChoiceFor(IncompleteWriteClassification.BackupOnly)
+        )
+    }
+
+    @Test
+    fun `unambiguousChoiceFor is null for every classification offering a real decision`() {
+        // Including AwaitingChoice, despite it having a suggestedDefault — a suggestion is
+        // still choosing on the user's behalf, not the only possible outcome, so it must
+        // never be eligible for a bulk "resolve all" shortcut.
+        listOf(
+            IncompleteWriteClassification.AwaitingChoice,
+            IncompleteWriteClassification.OriginalAndBackupPresent,
+            IncompleteWriteClassification.AllThreePresent,
+            IncompleteWriteClassification.TempOnly
+        ).forEach { classification ->
+            assertNull(
+                "$classification has more than one real choice and must not be bulk-eligible",
+                RecoveryOptions.unambiguousChoiceFor(classification)
+            )
+        }
+    }
 }

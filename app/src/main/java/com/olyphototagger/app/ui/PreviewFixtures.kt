@@ -182,6 +182,19 @@ internal object PreviewFixtures {
         )
     )
 
+    /** A batch dominated by one trivial, bulk-eligible case — the real-world shape found
+     *  2026-08-11 when a full SD card left ~200 stray temp files behind, all StaleTempOnly. */
+    val manyPendingRecoveries = (1..12).map { i ->
+        IncompleteWrite(
+            folderName = "100OLYMP",
+            recoveredName = "P811%04d.JPG".format(i),
+            original = recoveryFile("P811%04d.JPG".format(i)),
+            temp = recoveryFile("P811%04d.JPG.tmp".format(i)),
+            backup = null,
+            classification = IncompleteWriteClassification.StaleTempOnly
+        )
+    } + pendingRecoveries
+
     val writeLogEntries = listOf(
         WriteLogEntryUiState(
             id = 1,

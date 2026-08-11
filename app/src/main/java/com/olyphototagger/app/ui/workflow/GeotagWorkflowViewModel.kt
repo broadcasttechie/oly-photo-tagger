@@ -24,10 +24,15 @@ import com.olyphototagger.app.settings.SettingsRepository
 import com.olyphototagger.app.dcim.PhotoPair
 import com.olyphototagger.app.write.GpsExifWriter
 import com.olyphototagger.app.write.IncompleteWrite
+import com.olyphototagger.app.write.IncompleteWriteClassification
 import com.olyphototagger.app.write.IncompleteWriteScanner
 import com.olyphototagger.app.write.RecoveryActionResult
 import com.olyphototagger.app.write.RecoveryChoice
+import com.olyphototagger.app.write.RecoveryOptions
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -37,10 +42,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * State + actions for the whole Home -> dry-run -> progress -> summary journey. No DI
@@ -217,6 +225,62 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
+    /**
+     * Resolves every current [WorkflowUiState.pendingRecoveries] item with [classification]
+     * at once, using its one unambiguous [RecoveryOptions.unambiguousChoiceFor] choice —
+     * found necessary the same real-device session that found the recovery flow itself: a
+     * full SD card left over 200 stray temp files behind, all the same trivial
+     * StaleTempOnly case, and resolving those one tap at a time doesn't scale. The
+     * `require` is a genuine invariant, not defensive noise — the Recovery screen must
+     * only ever offer this for classifications it already confirmed are single-choice
+     * (see [RecoveryScreen]), so reaching the else branch would mean the UI let through a
+     * classification with a real decision to make, silently picking one on the user's
+     * behalf.
+     *
+     * Bounded concurrency for the same reason [GeotagOrchestrator.applyMatches] bounds its
+     * own writes — hundreds of simultaneous SAF calls would just queue up behind the OS's
+     * binder thread pool anyway.
+     */
+    suspend fun resolveAllUnambiguous(classification: IncompleteWriteClassification) {
+        val choice = requireNotNull(RecoveryOptions.unambiguousChoiceFor(classification)) {
+            "resolveAllUnambiguous called for $classification, which doesn't have exactly one choice"
+        }
+        val scanResult = _uiState.value.incompleteWriteScanResult
+        if (scanResult == null) {
+            _events.tryEmit("Could not resolve: no scan result to resolve against.")
+            return
+        }
+        val items = _uiState.value.pendingRecoveries.filter { it.classification == classification }
+        if (items.isEmpty()) return
+
+        // Plain vars would race: several of these run concurrently (bounded by the
+        // semaphore below), so a lost update here would under-report a real success/failure.
+        val succeeded = AtomicInteger(0)
+        val failed = AtomicInteger(0)
+        coroutineScope {
+            val semaphore = Semaphore(MAX_CONCURRENT_RECOVERY_ACTIONS)
+            items.map { item ->
+                async {
+                    val result = semaphore.withPermit { incompleteWriteScanner.resolve(scanResult, item, choice) }
+                    when (result) {
+                        RecoveryActionResult.Recovered -> {
+                            _uiState.update { it.copy(pendingRecoveries = it.pendingRecoveries - item) }
+                            succeeded.incrementAndGet()
+                        }
+                        is RecoveryActionResult.ActionFailed -> failed.incrementAndGet()
+                    }
+                }
+            }.awaitAll()
+        }
+        _events.tryEmit(
+            if (failed.get() == 0) {
+                "Resolved ${succeeded.get()} item${if (succeeded.get() == 1) "" else "s"}"
+            } else {
+                "Resolved ${succeeded.get()} item${if (succeeded.get() == 1) "" else "s"}, ${failed.get()} failed — see the list below"
+            }
+        )
+    }
+
     suspend fun runPreScan(): Boolean {
         val root = _uiState.value.rootUri ?: return false
         _uiState.update {
@@ -371,5 +435,11 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
         // internal, not private: HomeScreen matches on this exact message to offer a
         // "Settings" action on the error snackbar rather than just a generic dismiss.
         internal const val MISSING_GPS_SOURCE_MESSAGE = "Set up a GPS source in Settings first."
+
+        /** Bounds concurrent SAF calls in [resolveAllUnambiguous] — each one is a plain
+         *  rename/delete, much lighter than a write, but hundreds at once would still just
+         *  queue up behind the OS's own binder thread pool for no real gain over a bounded
+         *  number running at a time. */
+        private const val MAX_CONCURRENT_RECOVERY_ACTIONS = 8
     }
 }
