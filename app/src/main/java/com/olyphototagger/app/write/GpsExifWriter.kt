@@ -52,12 +52,21 @@ class GpsExifWriter(
     private val scratchDir: File
 ) {
 
+    /**
+     * [strayArtifacts] defaults to a fresh, single-use index — correct but only worth its
+     * own full-folder scan once, exactly like the old always-scan behavior this replaced.
+     * Callers writing a whole batch (see [com.olyphototagger.app.pipeline.GeotagOrchestrator
+     * .applyMatches]) should build one via [newStrayArtifactIndex] and pass the *same*
+     * instance to every call in the batch instead, so the scan happens once per folder
+     * rather than once per file — see [StrayArtifactIndex]'s own doc for why that matters.
+     */
     suspend fun write(
         original: DocumentFile,
         latitude: Double,
         longitude: Double,
         altitudeMeters: Double? = null,
-        overwriteExisting: Boolean = false
+        overwriteExisting: Boolean = false,
+        strayArtifacts: StrayArtifactIndex = newStrayArtifactIndex()
     ): GpsExifWriteResult = withContext(Dispatchers.IO) {
         val originalName = original.name
             ?: return@withContext GpsExifWriteResult.Failed("Original file has no name")
@@ -78,7 +87,7 @@ class GpsExifWriter(
         // hasn't been resolved yet — refuse rather than risk compounding an
         // already-inconsistent state. Only IncompleteWriteRecoverer touches this file
         // again until that's sorted out.
-        if (parent.findFile(backupName) != null) {
+        if (strayArtifacts.hasStrayBackup(parent, originalName)) {
             return@withContext GpsExifWriteResult.BackupArtifactPresent(backupName)
         }
 
@@ -101,15 +110,9 @@ class GpsExifWriter(
         // DocumentFile.createFile() (confirmed on-device, see parseArtifactName's doc)
         // silently appends its own extra extension onto whatever name this app asks for,
         // so the orphan actually left behind may be named e.g. "P8080743.JPG.tmp.jpg" —
-        // scan for anything that recovers back to this original instead of trusting the
-        // literal name round-trips.
-        parent.listFiles().forEach { sibling ->
-            val name = sibling.name ?: return@forEach
-            val artifact = GpsWriteSupport.parseArtifactName(name)
-            if (artifact != null && artifact.isTemp && artifact.recoveredName.equals(originalName, ignoreCase = true)) {
-                sibling.delete()
-            }
-        }
+        // [strayArtifacts] already found anything that recovers back to this original,
+        // rather than trusting the literal name round-trips.
+        strayArtifacts.strayTemps(parent, originalName).forEach { it.delete() }
 
         val temp = parent.createFile(mimeType ?: "application/octet-stream", tempName)
             ?: return@withContext GpsExifWriteResult.Failed("Could not create temp file $tempName")
@@ -159,6 +162,10 @@ class GpsExifWriter(
             GpsExifWriteResult.Failed("I/O error: ${e.message}", e)
         }
     }
+
+    /** A fresh, empty [StrayArtifactIndex] sharing this writer's [ContentResolver] — see
+     *  [write]'s own doc for why a whole batch should build one of these and reuse it. */
+    fun newStrayArtifactIndex(): StrayArtifactIndex = StrayArtifactIndex(contentResolver)
 
     /**
      * Stages [sourceUri] to a real file (perl can't read content:// URIs), runs exiftool

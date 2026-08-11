@@ -19,6 +19,7 @@ import com.olyphototagger.app.geotag.GeoMatch
 import com.olyphototagger.app.geotag.GpsSource
 import com.olyphototagger.app.write.GpsExifWriteResult
 import com.olyphototagger.app.write.GpsExifWriter
+import com.olyphototagger.app.write.StrayArtifactIndex
 import com.olyphototagger.app.write.WriteLogMapper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -164,17 +165,24 @@ class GeotagOrchestrator(
         }.awaitAll()
     }
 
-    /** Writes a confirmed match's coordinates to both files in its pair (whichever are present). */
+    /**
+     * Writes a confirmed match's coordinates to both files in its pair (whichever are
+     * present). [strayArtifacts] defaults to a fresh, single-use index for a standalone
+     * call — [applyMatches] passes one shared instance instead, so a whole batch's worth of
+     * pre-write safety checks scan each folder once rather than once per file; see
+     * [StrayArtifactIndex]'s own doc for why that's safe.
+     */
     suspend fun applyMatch(
         scan: ScanResult,
         match: ProposedMatch,
-        overwriteExisting: Boolean = false
+        overwriteExisting: Boolean = false,
+        strayArtifacts: StrayArtifactIndex = gpsExifWriter.newStrayArtifactIndex()
     ): PairWriteResult {
         val geo = match.geoMatch as? GeoMatch.Matched
             ?: throw IllegalArgumentException("applyMatch requires a Matched GeoMatch, was ${match.geoMatch}")
 
-        val jpegResult = match.pair.jpeg?.let { writeOne(scan, it, geo, overwriteExisting) }
-        val rawResult = match.pair.raw?.let { writeOne(scan, it, geo, overwriteExisting) }
+        val jpegResult = match.pair.jpeg?.let { writeOne(scan, it, geo, overwriteExisting, strayArtifacts) }
+        val rawResult = match.pair.raw?.let { writeOne(scan, it, geo, overwriteExisting, strayArtifacts) }
         return PairWriteResult(match.pair, jpegResult, rawResult)
     }
 
@@ -207,11 +215,14 @@ class GeotagOrchestrator(
         overwriteExisting: Boolean = false,
         onEachResult: suspend (result: PairWriteResult, completed: Int, total: Int) -> Unit
     ): List<PairWriteResult> = coroutineScope {
+        // One shared index for the whole batch — see StrayArtifactIndex's own doc for why
+        // a start-of-batch snapshot is safe for every write in this same batch to share.
+        val strayArtifacts = gpsExifWriter.newStrayArtifactIndex()
         val semaphore = Semaphore(MAX_CONCURRENT_WRITES)
         val completedCount = AtomicInteger(0)
         matches.map { match ->
             async {
-                val result = semaphore.withPermit { applyMatchCatching(scan, match, overwriteExisting) }
+                val result = semaphore.withPermit { applyMatchCatching(scan, match, overwriteExisting, strayArtifacts) }
                 onEachResult(result, completedCount.incrementAndGet(), matches.size)
                 result
             }
@@ -221,9 +232,10 @@ class GeotagOrchestrator(
     private suspend fun applyMatchCatching(
         scan: ScanResult,
         match: ProposedMatch,
-        overwriteExisting: Boolean
+        overwriteExisting: Boolean,
+        strayArtifacts: StrayArtifactIndex
     ): PairWriteResult = try {
-        applyMatch(scan, match, overwriteExisting)
+        applyMatch(scan, match, overwriteExisting, strayArtifacts)
     } catch (e: CancellationException) {
         throw e // never swallow real cancellation (e.g. the whole batch's scope ending)
     } catch (e: Exception) {
@@ -239,7 +251,8 @@ class GeotagOrchestrator(
         scan: ScanResult,
         file: CameraFile,
         geo: GeoMatch.Matched,
-        overwriteExisting: Boolean
+        overwriteExisting: Boolean,
+        strayArtifacts: StrayArtifactIndex
     ): GpsExifWriteResult {
         val result = gpsExifWriter.write(
             original = scan.resolve(file)
@@ -247,7 +260,8 @@ class GeotagOrchestrator(
             latitude = geo.latitude,
             longitude = geo.longitude,
             altitudeMeters = geo.altitudeMeters,
-            overwriteExisting = overwriteExisting
+            overwriteExisting = overwriteExisting,
+            strayArtifacts = strayArtifacts
         )
         // Logged here, the one place every write attempt (whatever the outcome) funnels
         // through, rather than in the ViewModel — so any future caller of applyMatch()
