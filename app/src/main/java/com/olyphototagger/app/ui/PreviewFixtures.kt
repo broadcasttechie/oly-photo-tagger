@@ -75,7 +75,7 @@ internal object PreviewFixtures {
         )
     )
     val excluded = listOf(
-        ExcludedPair(photo("P8080700"), ExcludeReason.ALREADY_TAGGED),
+        ExcludedPair(photo("P8080700"), ExcludeReason.ALREADY_TAGGED, Instant.parse("2026-08-08T12:10:03Z")),
         ExcludedPair(photo("P8080701", hasRaw = false), ExcludeReason.NO_TIMESTAMP)
     )
 

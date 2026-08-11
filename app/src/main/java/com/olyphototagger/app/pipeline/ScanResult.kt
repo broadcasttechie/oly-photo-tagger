@@ -9,7 +9,7 @@ import java.time.Instant
 
 enum class ExcludeReason { ALREADY_TAGGED, NO_TIMESTAMP, OUTSIDE_DATE_RANGE }
 
-data class ExcludedPair(val pair: PhotoPair, val reason: ExcludeReason)
+data class ExcludedPair(val pair: PhotoPair, val reason: ExcludeReason, val timestamp: Instant? = null)
 
 /** A pair with a resolved timestamp and its position against the GPS track — the dry-run preview's data. */
 data class ProposedMatch(val pair: PhotoPair, val timestamp: Instant, val geoMatch: GeoMatch)

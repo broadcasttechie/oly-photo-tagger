@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -30,6 +32,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.olyphototagger.app.dcim.PhotoPair
+import com.olyphototagger.app.dcim.identityKey
 import com.olyphototagger.app.geotag.GeoMatch
 import com.olyphototagger.app.pipeline.ExcludeReason
 import com.olyphototagger.app.pipeline.ExcludedPair
@@ -37,6 +40,9 @@ import com.olyphototagger.app.pipeline.ProposedMatch
 import com.olyphototagger.app.pipeline.ScanResult
 import com.olyphototagger.app.ui.PreviewFixtures
 import com.olyphototagger.app.ui.theme.OlyPhotoTaggerTheme
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /**
  * Shows exactly what a real run would do — and, just as importantly, exactly what it
@@ -102,42 +108,52 @@ private fun DryRunScreenContent(
         ) {
             SummaryCard(scanResult, willWrite.size, selectedWillWrite.size, gapTooLarge.size, outsideTrack.size)
 
-            Column(
+            // LazyColumn, not a plain Column: a real dry-run batch can run into the
+            // hundreds or thousands of rows (see the 1000-photo stress test), and a plain
+            // Column here doesn't scroll at all once its weighted space runs out — it just
+            // clips, invisibly, since every small fixture/test batch used while building
+            // this screen fit on one page. Keys must be Bundle-compatible strings, not the
+            // raw data classes — see RecoveryScreen's own key fix for why.
+            LazyColumn(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 if (willWrite.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SectionHeaderText("Will be tagged (${selectedWillWrite.size}/${willWrite.size} selected)")
-                        TextButton(onClick = { onSetAllSelected(selectedWillWrite.size < willWrite.size) }) {
-                            Text(if (selectedWillWrite.size < willWrite.size) "Select all" else "Deselect all")
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            SectionHeaderText("Will be tagged (${selectedWillWrite.size}/${willWrite.size} selected)")
+                            TextButton(onClick = { onSetAllSelected(selectedWillWrite.size < willWrite.size) }) {
+                                Text(if (selectedWillWrite.size < willWrite.size) "Select all" else "Deselect all")
+                            }
                         }
+                        HorizontalDivider()
                     }
-                    HorizontalDivider()
-                    willWrite.forEach { match ->
+                    items(willWrite, key = { it.pair.stableKey() }) { match ->
                         val selected = match.pair.stableKey() !in deselectedPairKeys
                         MatchedRow(match, selected) { onToggleSelection(match.pair) }
                     }
                 }
                 if (gapTooLarge.isNotEmpty()) {
-                    SectionHeader("Skipped — GPS gap too large (${gapTooLarge.size})")
-                    gapTooLarge.forEach { SkippedRow(it, "GPS points too far apart in time") }
+                    item { SectionHeader("Skipped — GPS gap too large (${gapTooLarge.size})") }
+                    items(gapTooLarge, key = { it.pair.stableKey() }) { SkippedRow(it, "GPS points too far apart in time") }
                 }
                 if (outsideTrack.isNotEmpty()) {
-                    SectionHeader("Skipped — outside GPS track (${outsideTrack.size})")
-                    outsideTrack.forEach { SkippedRow(it, "No nearby GPS data") }
+                    item { SectionHeader("Skipped — outside GPS track (${outsideTrack.size})") }
+                    items(outsideTrack, key = { it.pair.stableKey() }) { SkippedRow(it, "No nearby GPS data") }
                 }
                 if (scanResult.excluded.isNotEmpty()) {
-                    SectionHeader("Not considered (${scanResult.excluded.size})")
-                    scanResult.excluded.forEach { ExcludedRow(it) }
+                    item { SectionHeader("Not considered (${scanResult.excluded.size})") }
+                    items(scanResult.excluded, key = { it.pair.stableKey() }) { ExcludedRow(it) }
                 }
                 if (scanResult.conflicts.isNotEmpty()) {
-                    SectionHeader("Ambiguous duplicates, skipped (${scanResult.conflicts.size})")
-                    scanResult.conflicts.forEach { Text("  ${it.displayName}", style = MaterialTheme.typography.bodySmall) }
+                    item { SectionHeader("Ambiguous duplicates, skipped (${scanResult.conflicts.size})") }
+                    items(scanResult.conflicts, key = { it.identityKey() }) {
+                        Text("  ${it.displayName}", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
 
@@ -209,6 +225,11 @@ private fun MatchedRow(match: ProposedMatch, selected: Boolean, onToggle: () -> 
         Column(Modifier.padding(vertical = 4.dp)) {
             Text(match.pair.baseName, style = MaterialTheme.typography.bodyMedium)
             Text(
+                formatCaptureTime(match.timestamp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
                 "%.6f, %.6f".format(geo.latitude, geo.longitude),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -221,6 +242,11 @@ private fun MatchedRow(match: ProposedMatch, selected: Boolean, onToggle: () -> 
 private fun SkippedRow(match: ProposedMatch, reason: String) {
     Column(Modifier.padding(vertical = 4.dp)) {
         Text(match.pair.baseName, style = MaterialTheme.typography.bodyMedium)
+        Text(
+            formatCaptureTime(match.timestamp),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Text(reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
 }
@@ -232,12 +258,16 @@ private fun ExcludedRow(excluded: ExcludedPair) {
         ExcludeReason.NO_TIMESTAMP -> "no readable capture timestamp"
         ExcludeReason.OUTSIDE_DATE_RANGE -> "outside the selected date range"
     }
+    val whenText = excluded.timestamp?.let { ", ${formatCaptureTime(it)}" }.orEmpty()
     Text(
-        "${excluded.pair.baseName} — $reasonText",
+        "${excluded.pair.baseName}$whenText — $reasonText",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 }
+
+private fun formatCaptureTime(instant: Instant): String =
+    DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm").withZone(ZoneId.systemDefault()).format(instant)
 
 @Preview(showBackground = true, name = "Mixed results")
 @Composable

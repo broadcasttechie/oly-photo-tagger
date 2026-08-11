@@ -134,9 +134,9 @@ class GeotagOrchestrator(
         for ((pair, status) in statuses) {
             when (val decision = PairFilter.decide(status, includeAlreadyTagged, dateRange)) {
                 is PairDecision.Include -> included += pair to decision.timestamp
-                PairDecision.ExcludeAlreadyTagged -> excluded += ExcludedPair(pair, ExcludeReason.ALREADY_TAGGED)
+                PairDecision.ExcludeAlreadyTagged -> excluded += ExcludedPair(pair, ExcludeReason.ALREADY_TAGGED, status.timestamp)
                 PairDecision.ExcludeNoTimestamp -> excluded += ExcludedPair(pair, ExcludeReason.NO_TIMESTAMP)
-                PairDecision.ExcludeOutsideDateRange -> excluded += ExcludedPair(pair, ExcludeReason.OUTSIDE_DATE_RANGE)
+                PairDecision.ExcludeOutsideDateRange -> excluded += ExcludedPair(pair, ExcludeReason.OUTSIDE_DATE_RANGE, status.timestamp)
             }
         }
 
