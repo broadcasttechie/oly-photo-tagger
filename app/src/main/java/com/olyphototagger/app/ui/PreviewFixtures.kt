@@ -102,6 +102,8 @@ internal object PreviewFixtures {
         startedAt = Instant.now().minusSeconds(12)
     )
 
+    val runDuration: Duration = Duration.ofSeconds(47)
+
     val runResultsAllSucceeded = matched.map {
         PairWriteResult(
             pair = it.pair,

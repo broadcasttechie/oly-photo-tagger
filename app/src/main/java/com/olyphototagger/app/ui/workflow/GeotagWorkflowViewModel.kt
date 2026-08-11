@@ -324,7 +324,8 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
                 // write failures never reach here (applyMatches turns those into normal
                 // Failed results, same as always), so this is now a last-resort net for
                 // something more fundamental going wrong.
-                _uiState.update { it.copy(runProgress = null, runResults = results) }
+                val duration = Duration.between(startedAt, Instant.now())
+                _uiState.update { it.copy(runProgress = null, runResults = results, runDuration = duration) }
             }
         }
     }

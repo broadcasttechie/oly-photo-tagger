@@ -24,6 +24,7 @@ import com.olyphototagger.app.pipeline.PairWriteResult
 import com.olyphototagger.app.ui.PreviewFixtures
 import com.olyphototagger.app.ui.theme.OlyPhotoTaggerTheme
 import com.olyphototagger.app.write.GpsExifWriteResult
+import java.time.Duration
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,17 +33,19 @@ fun SummaryScreen(
     onDone: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    SummaryScreenContent(results = uiState.runResults.orEmpty(), onDone = onDone)
+    SummaryScreenContent(results = uiState.runResults.orEmpty(), duration = uiState.runDuration, onDone = onDone)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SummaryScreenContent(
     results: List<PairWriteResult>,
+    duration: Duration?,
     onDone: () -> Unit
 ) {
     val succeeded = results.count { it.isFullySuccessful }
     val needsAttention = results.filterNot { it.isFullySuccessful }
+    val fileCount = results.sumOf { listOfNotNull(it.jpegResult, it.rawResult).size }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Summary") }) }
@@ -62,6 +65,19 @@ private fun SummaryScreenContent(
                             "${needsAttention.size} need your attention — see below",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    // "processed", not "written" — fileCount includes files that ended up
+                    // skipped/failed/needing recovery too, and the line above already
+                    // covers success/failure; this is purely the time/volume stats.
+                    // duration is null only if results were somehow set without ever going
+                    // through startRun() (never happens in the real app) — the fallback
+                    // just omits the stats line rather than showing something odd.
+                    if (duration != null) {
+                        Text(
+                            "$fileCount file${if (fileCount == 1) "" else "s"} processed in ${formatDuration(duration)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -121,7 +137,7 @@ private fun DetailLine(label: String, result: GpsExifWriteResult) {
 @Composable
 private fun SummaryScreenSuccessPreview() {
     OlyPhotoTaggerTheme(dynamicColor = false) {
-        SummaryScreenContent(results = PreviewFixtures.runResultsAllSucceeded, onDone = {})
+        SummaryScreenContent(results = PreviewFixtures.runResultsAllSucceeded, duration = PreviewFixtures.runDuration, onDone = {})
     }
 }
 
@@ -129,6 +145,6 @@ private fun SummaryScreenSuccessPreview() {
 @Composable
 private fun SummaryScreenAttentionPreview() {
     OlyPhotoTaggerTheme(dynamicColor = false) {
-        SummaryScreenContent(results = PreviewFixtures.runResultsNeedingAttention, onDone = {})
+        SummaryScreenContent(results = PreviewFixtures.runResultsNeedingAttention, duration = PreviewFixtures.runDuration, onDone = {})
     }
 }

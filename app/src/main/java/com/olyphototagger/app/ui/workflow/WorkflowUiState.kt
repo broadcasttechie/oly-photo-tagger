@@ -7,6 +7,7 @@ import com.olyphototagger.app.pipeline.PreScanSummary
 import com.olyphototagger.app.pipeline.ScanResult
 import com.olyphototagger.app.write.IncompleteWrite
 import com.olyphototagger.app.write.IncompleteWriteScanResult
+import java.time.Duration
 import java.time.Instant
 
 /** [currentAction] reports the most recently *completed* pair, not one currently in
@@ -53,7 +54,12 @@ data class WorkflowUiState(
      *  eligible is selected by default and this stays empty in the common case. */
     val deselectedPairKeys: Set<String> = emptySet(),
     val runProgress: RunProgress? = null,
-    val runResults: List<PairWriteResult>? = null
+    val runResults: List<PairWriteResult>? = null,
+    /** How long the most recent write batch took, start to finish — set alongside
+     *  [runResults] once the batch ends, for [SummaryScreen] to report. Not part of
+     *  [RunProgress] itself: that's cleared the moment the batch finishes, but the
+     *  Summary screen needs this *after* that point. */
+    val runDuration: Duration? = null
 ) {
     val canScan: Boolean get() = rootUri != null && !isBusy
 }

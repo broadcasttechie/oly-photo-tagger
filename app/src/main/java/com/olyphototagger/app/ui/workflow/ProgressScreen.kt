@@ -139,13 +139,6 @@ private fun estimateRemaining(progress: RunProgress): Duration? {
     return elapsed.dividedBy(progress.completed.toLong()).multipliedBy(remaining.toLong())
 }
 
-private fun formatDuration(duration: Duration): String {
-    val totalSeconds = duration.seconds.coerceAtLeast(0)
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return if (minutes > 0) "${minutes}m ${seconds}s" else "${seconds}s"
-}
-
 @Preview(showBackground = true, name = "In progress")
 @Composable
 private fun ProgressScreenPreview() {
