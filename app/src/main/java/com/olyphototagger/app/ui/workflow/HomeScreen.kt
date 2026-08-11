@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -27,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
@@ -48,6 +50,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -109,6 +112,7 @@ fun HomeScreen(
         onDateRangeChange = viewModel::setDateRange,
         onLoadLocalOffset = viewModel::loadLocalOffset,
         onAdjustOffsetHours = viewModel::adjustOffsetHours,
+        onSetOffsetSeconds = viewModel::setCameraOffsetSeconds,
         onDryRun = { scope.launch { if (viewModel.runDryScan()) onNavigateToDryRun() } }
     )
 }
@@ -130,6 +134,7 @@ private fun HomeScreenContent(
     onDateRangeChange: (Instant?, Instant?) -> Unit,
     onLoadLocalOffset: () -> Unit,
     onAdjustOffsetHours: (Int) -> Unit,
+    onSetOffsetSeconds: (Int) -> Unit,
     onDryRun: () -> Unit
 ) {
     Scaffold(
@@ -187,7 +192,8 @@ private fun HomeScreenContent(
             CameraOffsetCard(
                 offsetSeconds = uiState.cameraOffsetSeconds,
                 onLoadLocal = onLoadLocalOffset,
-                onAdjustHours = onAdjustOffsetHours
+                onAdjustHours = onAdjustOffsetHours,
+                onSetOffsetSeconds = onSetOffsetSeconds
             )
 
             Button(
@@ -216,7 +222,8 @@ private fun HomeScreenEmptyPreview() {
             uiState = WorkflowUiState(),
             snackbarHostState = remember { SnackbarHostState() },
             onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
-            onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {}, onDryRun = {}
+            onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {},
+            onSetOffsetSeconds = {}, onDryRun = {}
         )
     }
 }
@@ -234,7 +241,8 @@ private fun HomeScreenPopulatedPreview() {
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
-            onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {}, onDryRun = {}
+            onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {},
+            onSetOffsetSeconds = {}, onDryRun = {}
         )
     }
 }
@@ -252,7 +260,8 @@ private fun HomeScreenDarkPreview() {
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
-            onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {}, onDryRun = {}
+            onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {},
+            onSetOffsetSeconds = {}, onDryRun = {}
         )
     }
 }
@@ -269,8 +278,17 @@ private fun HomeScreenRecoveryPreview() {
             ),
             snackbarHostState = remember { SnackbarHostState() },
             onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
-            onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {}, onDryRun = {}
+            onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {},
+            onSetOffsetSeconds = {}, onDryRun = {}
         )
+    }
+}
+
+@Preview(showBackground = true, name = "Advanced offset dialog")
+@Composable
+private fun AdvancedOffsetDialogPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        AdvancedOffsetDialog(initialOffsetSeconds = 3_667, onDismiss = {}, onConfirm = {})
     }
 }
 
@@ -360,8 +378,11 @@ private fun DateRangeCard(
 private fun CameraOffsetCard(
     offsetSeconds: Int,
     onLoadLocal: () -> Unit,
-    onAdjustHours: (Int) -> Unit
+    onAdjustHours: (Int) -> Unit,
+    onSetOffsetSeconds: (Int) -> Unit
 ) {
+    var showAdvanced by remember { mutableStateOf(false) }
+
     Card {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Camera clock offset from UTC", style = MaterialTheme.typography.titleMedium)
@@ -377,8 +398,136 @@ private fun CameraOffsetCard(
                 OutlinedButton(onClick = onLoadLocal) { Text("Use phone's local time") }
                 OutlinedButton(onClick = { onAdjustHours(1) }) { Text("+1h") }
             }
+            TextButton(onClick = { showAdvanced = true }, modifier = Modifier.align(Alignment.End)) {
+                Text("Advanced…")
+            }
         }
     }
+
+    if (showAdvanced) {
+        AdvancedOffsetDialog(
+            initialOffsetSeconds = offsetSeconds,
+            onDismiss = { showAdvanced = false },
+            onConfirm = {
+                onSetOffsetSeconds(it)
+                showAdvanced = false
+            }
+        )
+    }
+}
+
+/**
+ * HH:MM:SS precision on top of the +-1h buttons above — those cover the common case (the
+ * camera's clock was just left on the wrong whole-hour timezone), this covers a clock that
+ * was slightly off to begin with, e.g. never set precisely at all. No ViewModel changes
+ * needed: [WorkflowUiState.cameraOffsetSeconds] and [GeotagWorkflowViewModel.setCameraOffsetSeconds]
+ * are already second-precision throughout — this is purely a more precise way to produce
+ * the same Int.
+ */
+@Composable
+private fun AdvancedOffsetDialog(
+    initialOffsetSeconds: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    val initialAbsSeconds = abs(initialOffsetSeconds)
+    var isNegative by remember { mutableStateOf(initialOffsetSeconds < 0) }
+    var hoursText by remember { mutableStateOf((initialAbsSeconds / 3600).toString()) }
+    var minutesText by remember { mutableStateOf(((initialAbsSeconds % 3600) / 60).toString()) }
+    var secondsText by remember { mutableStateOf((initialAbsSeconds % 60).toString()) }
+
+    val magnitude = (hoursText.toIntOrNull() ?: 0) * 3600 +
+        (minutesText.toIntOrNull() ?: 0) * 60 +
+        (secondsText.toIntOrNull() ?: 0)
+    // ZoneOffset only supports up to +/-18:00:00 (ZoneOffset.ofTotalSeconds throws outside
+    // that) — clamped here, the one place free-form input enters this value, rather than
+    // relied on downstream.
+    val totalSeconds = (if (isNegative) -magnitude else magnitude).coerceIn(-64_800, 64_800)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Advanced offset") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Set the camera clock's offset from UTC precisely, down to the second.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SignToggleButton(
+                        label = "Ahead (+)",
+                        selected = !isNegative,
+                        onClick = { isNegative = false },
+                        modifier = Modifier.weight(1f)
+                    )
+                    SignToggleButton(
+                        label = "Behind (−)",
+                        selected = isNegative,
+                        onClick = { isNegative = true },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OffsetNumberField(
+                        label = "HH",
+                        value = hoursText,
+                        onValueChange = { hoursText = sanitizeOffsetDigits(it, max = 18) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OffsetNumberField(
+                        label = "MM",
+                        value = minutesText,
+                        onValueChange = { minutesText = sanitizeOffsetDigits(it, max = 59) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OffsetNumberField(
+                        label = "SS",
+                        value = secondsText,
+                        onValueChange = { secondsText = sanitizeOffsetDigits(it, max = 59) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Text("= ${formatOffset(totalSeconds)}", style = MaterialTheme.typography.titleMedium)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(totalSeconds) }) { Text("Set") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun SignToggleButton(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    if (selected) {
+        Button(onClick = onClick, modifier = modifier) { Text(label) }
+    } else {
+        OutlinedButton(onClick = onClick, modifier = modifier) { Text(label) }
+    }
+}
+
+@Composable
+private fun OffsetNumberField(label: String, value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        singleLine = true,
+        modifier = modifier
+    )
+}
+
+/** Keeps offset text fields numeric and within [max], clamping rather than rejecting a
+ *  keystroke that overshoots — simpler than cross-field validation, and the dialog's own
+ *  live "=" preview (fed by the already-clamped value) makes the result obvious either way. */
+private fun sanitizeOffsetDigits(input: String, max: Int): String {
+    val digitsOnly = input.filter(Char::isDigit).take(2)
+    val value = digitsOnly.toIntOrNull() ?: return digitsOnly
+    return if (value > max) max.toString() else digitsOnly
 }
 
 private fun formatOffset(totalSeconds: Int): String {
@@ -386,7 +535,12 @@ private fun formatOffset(totalSeconds: Int): String {
     val absSeconds = abs(totalSeconds)
     val hours = absSeconds / 3600
     val minutes = (absSeconds % 3600) / 60
-    return "%s%02d:%02d".format(sign, hours, minutes)
+    val seconds = absSeconds % 60
+    return if (seconds == 0) {
+        "%s%02d:%02d".format(sign, hours, minutes)
+    } else {
+        "%s%02d:%02d:%02d".format(sign, hours, minutes, seconds)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
