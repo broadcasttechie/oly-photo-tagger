@@ -20,6 +20,7 @@ import com.olyphototagger.app.geotag.GpsSource
 import com.olyphototagger.app.write.GpsExifWriteResult
 import com.olyphototagger.app.write.GpsExifWriter
 import com.olyphototagger.app.write.WriteLogMapper
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -28,6 +29,7 @@ import kotlinx.coroutines.sync.withPermit
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Ties the individual engines — scanner, pairer, EXIF readers, GPS source,
@@ -176,6 +178,63 @@ class GeotagOrchestrator(
         return PairWriteResult(match.pair, jpegResult, rawResult)
     }
 
+    /**
+     * Writes every match in [matches] concurrently, bounded to [MAX_CONCURRENT_WRITES] at
+     * once rather than [MAX_CONCURRENT_STATUS_CHECKS] like the read-side scan — each write
+     * spawns a real exiftool process per file, a much heavier unit of work than a status
+     * read, so this is bounded lower.
+     *
+     * Each pair is independent (a distinct original file, under its own `.tmp`/`.bak`
+     * names — see [com.olyphototagger.app.write.GpsWriteSupport], and each write's
+     * one-time [com.olyphototagger.app.exiftool.AssetExtractor.ensureInstalled] call is
+     * now genuinely safe to race, see its own doc) — but an *unexpected* exception from
+     * one (as opposed to a normal [GpsExifWriteResult.Failed] outcome, which
+     * [applyMatch] already returns rather than throws) must never cancel every other
+     * write already in flight the way plain [coroutineScope] structured-concurrency
+     * cancellation would. Caught and converted to the same kind of [GpsExifWriteResult.Failed]
+     * outcome instead, so the caller always gets a complete, same-size result list back —
+     * if anything, *more* robust than the old sequential loop, which would have aborted
+     * every match not yet attempted on the same kind of unexpected throw.
+     *
+     * [onEachResult] fires once per completed pair, in completion order rather than
+     * [matches]' order (several can finish close together when running concurrently) —
+     * lets the caller drive live progress UI without this function needing to know
+     * anything about it.
+     */
+    suspend fun applyMatches(
+        scan: ScanResult,
+        matches: List<ProposedMatch>,
+        overwriteExisting: Boolean = false,
+        onEachResult: suspend (result: PairWriteResult, completed: Int, total: Int) -> Unit
+    ): List<PairWriteResult> = coroutineScope {
+        val semaphore = Semaphore(MAX_CONCURRENT_WRITES)
+        val completedCount = AtomicInteger(0)
+        matches.map { match ->
+            async {
+                val result = semaphore.withPermit { applyMatchCatching(scan, match, overwriteExisting) }
+                onEachResult(result, completedCount.incrementAndGet(), matches.size)
+                result
+            }
+        }.awaitAll()
+    }
+
+    private suspend fun applyMatchCatching(
+        scan: ScanResult,
+        match: ProposedMatch,
+        overwriteExisting: Boolean
+    ): PairWriteResult = try {
+        applyMatch(scan, match, overwriteExisting)
+    } catch (e: CancellationException) {
+        throw e // never swallow real cancellation (e.g. the whole batch's scope ending)
+    } catch (e: Exception) {
+        val failure = GpsExifWriteResult.Failed("Unexpected error: ${e.message}", e)
+        PairWriteResult(
+            pair = match.pair,
+            jpegResult = match.pair.jpeg?.let { failure },
+            rawResult = match.pair.raw?.let { failure }
+        )
+    }
+
     private suspend fun writeOne(
         scan: ScanResult,
         file: CameraFile,
@@ -240,5 +299,12 @@ class GeotagOrchestrator(
         /** Bounds concurrent per-pair status resolution in [resolveStatusesConcurrently] —
          *  see that function's doc for why this is bounded rather than unbounded. */
         private const val MAX_CONCURRENT_STATUS_CHECKS = 8
+
+        /** Bounds concurrent writes in [applyMatches] — deliberately much lower than
+         *  [MAX_CONCURRENT_STATUS_CHECKS]: each write spawns a real exiftool process
+         *  rather than just opening a file, so this is sized to a plausible number of
+         *  CPU cores actually doing useful work at once on a phone, not I/O concurrency
+         *  headroom. */
+        private const val MAX_CONCURRENT_WRITES = 3
     }
 }

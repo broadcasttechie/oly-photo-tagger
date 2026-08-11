@@ -9,6 +9,9 @@ import com.olyphototagger.app.write.IncompleteWrite
 import com.olyphototagger.app.write.IncompleteWriteScanResult
 import java.time.Instant
 
+/** [currentAction] reports the most recently *completed* pair, not one currently in
+ *  progress — writes run several at a time (see [GeotagOrchestrator.applyMatches]), so
+ *  "the current one" wouldn't mean anything once more than one is in flight at once. */
 data class RunProgress(val completed: Int, val total: Int, val currentAction: String)
 
 /**

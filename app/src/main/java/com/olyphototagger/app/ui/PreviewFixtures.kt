@@ -95,7 +95,7 @@ internal object PreviewFixtures {
         conflicts = 0
     )
 
-    val runProgress = RunProgress(completed = 3, total = 5, currentAction = "Writing GPS to P8080744…")
+    val runProgress = RunProgress(completed = 3, total = 5, currentAction = "Wrote P8080744")
 
     val runResultsAllSucceeded = matched.map {
         PairWriteResult(

@@ -307,18 +307,22 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
                 it.copy(runProgress = RunProgress(0, matches.size, "Starting…"), runResults = null)
             }
 
-            val results = mutableListOf<PairWriteResult>()
+            var results: List<PairWriteResult> = emptyList()
             try {
-                for ((index, match) in matches.withIndex()) {
-                    val label = match.pair.baseName
-                    _uiState.update { it.copy(runProgress = RunProgress(index, matches.size, "Writing GPS to $label…")) }
-                    results += orchestrator.applyMatch(scanResult, match)
-                    _uiState.update { it.copy(runProgress = RunProgress(index + 1, matches.size, "Wrote $label")) }
+                // Writes run several at a time now (see applyMatches' own doc for why
+                // that's safe) — completion order isn't match order, so the progress
+                // label reports whichever one just finished rather than "the current
+                // one", which wouldn't mean anything once more than one is in flight.
+                results = orchestrator.applyMatches(scanResult, matches) { result, completed, total ->
+                    _uiState.update { it.copy(runProgress = RunProgress(completed, total, "Wrote ${result.pair.baseName}")) }
                 }
             } finally {
                 // Always land on a definite result, even if something threw partway
                 // through — an indefinitely "in progress" state would leave the user
-                // unable to tell whether their photos were actually touched.
+                // unable to tell whether their photos were actually touched. Individual
+                // write failures never reach here (applyMatches turns those into normal
+                // Failed results, same as always), so this is now a last-resort net for
+                // something more fundamental going wrong.
                 _uiState.update { it.copy(runProgress = null, runResults = results) }
             }
         }
