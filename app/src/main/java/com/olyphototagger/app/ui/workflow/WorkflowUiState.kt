@@ -11,8 +11,11 @@ import java.time.Instant
 
 /** [currentAction] reports the most recently *completed* pair, not one currently in
  *  progress — writes run several at a time (see [GeotagOrchestrator.applyMatches]), so
- *  "the current one" wouldn't mean anything once more than one is in flight at once. */
-data class RunProgress(val completed: Int, val total: Int, val currentAction: String)
+ *  "the current one" wouldn't mean anything once more than one is in flight at once.
+ *  [startedAt] is when the whole run began, carried unchanged on every update — an ETA
+ *  needs the real elapsed time since the batch started, not just since the screen showing
+ *  it was opened (the write survives navigation, see [GeotagWorkflowViewModel.startRun]). */
+data class RunProgress(val completed: Int, val total: Int, val currentAction: String, val startedAt: Instant)
 
 /**
  * All state for the Home -> dry-run -> progress -> summary journey, in one place since

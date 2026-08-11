@@ -303,8 +303,9 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
             val matches = scanResult.matches.filter {
                 it.geoMatch is GeoMatch.Matched && it.pair.stableKey() !in deselected
             }
+            val startedAt = Instant.now()
             _uiState.update {
-                it.copy(runProgress = RunProgress(0, matches.size, "Starting…"), runResults = null)
+                it.copy(runProgress = RunProgress(0, matches.size, "Starting…", startedAt), runResults = null)
             }
 
             var results: List<PairWriteResult> = emptyList()
@@ -314,7 +315,7 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
                 // label reports whichever one just finished rather than "the current
                 // one", which wouldn't mean anything once more than one is in flight.
                 results = orchestrator.applyMatches(scanResult, matches) { result, completed, total ->
-                    _uiState.update { it.copy(runProgress = RunProgress(completed, total, "Wrote ${result.pair.baseName}")) }
+                    _uiState.update { it.copy(runProgress = RunProgress(completed, total, "Wrote ${result.pair.baseName}", startedAt)) }
                 }
             } finally {
                 // Always land on a definite result, even if something threw partway
