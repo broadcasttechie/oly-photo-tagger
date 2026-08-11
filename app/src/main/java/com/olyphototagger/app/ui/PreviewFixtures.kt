@@ -9,7 +9,9 @@ import com.olyphototagger.app.pipeline.PairWriteResult
 import com.olyphototagger.app.pipeline.PreScanSummary
 import com.olyphototagger.app.pipeline.ProposedMatch
 import com.olyphototagger.app.pipeline.ScanResult
+import com.olyphototagger.app.cache.WriteLogResultType
 import com.olyphototagger.app.ui.settings.GpxFileUiState
+import com.olyphototagger.app.ui.settings.WriteLogEntryUiState
 import com.olyphototagger.app.ui.workflow.RunProgress
 import com.olyphototagger.app.write.GpsExifWriteResult
 import com.olyphototagger.app.write.IncompleteWrite
@@ -170,6 +172,53 @@ internal object PreviewFixtures {
             temp = null,
             backup = recoveryFile("P8080757.JPG.bak"),
             classification = IncompleteWriteClassification.OriginalAndBackupPresent
+        )
+    )
+
+    val writeLogEntries = listOf(
+        WriteLogEntryUiState(
+            id = 1,
+            loggedAt = Instant.parse("2026-08-11T09:24:56Z"),
+            folderName = "100OLYMP",
+            displayName = "P8080743.JPG",
+            resultType = WriteLogResultType.WRITTEN,
+            previousLatLong = null,
+            newLatLong = 53.122827 to -2.075001,
+            newAltitudeMeters = 38.0,
+            detail = null
+        ),
+        WriteLogEntryUiState(
+            id = 2,
+            loggedAt = Instant.parse("2026-08-11T09:24:58Z"),
+            folderName = "100OLYMP",
+            displayName = "P8080743.ORF",
+            resultType = WriteLogResultType.UNSUPPORTED_FORMAT,
+            previousLatLong = null,
+            newLatLong = null,
+            newAltitudeMeters = null,
+            detail = "Unsupported format (image/x-olympus-orf)"
+        ),
+        WriteLogEntryUiState(
+            id = 3,
+            loggedAt = Instant.parse("2026-08-11T09:25:10Z"),
+            folderName = "100OLYMP",
+            displayName = "P8080744.JPG",
+            resultType = WriteLogResultType.SKIPPED_ALREADY_TAGGED,
+            previousLatLong = 53.124833 to -2.075267,
+            newLatLong = null,
+            newAltitudeMeters = null,
+            detail = null
+        ),
+        WriteLogEntryUiState(
+            id = 4,
+            loggedAt = Instant.parse("2026-08-11T09:25:22Z"),
+            folderName = "100OLYMP",
+            displayName = "P8080760.JPG",
+            resultType = WriteLogResultType.FAILED,
+            previousLatLong = null,
+            newLatLong = null,
+            newAltitudeMeters = null,
+            detail = "Verification mismatch after write"
         )
     )
 }

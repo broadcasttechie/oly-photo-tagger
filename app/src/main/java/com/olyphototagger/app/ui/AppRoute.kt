@@ -8,4 +8,5 @@ object AppRoute {
     const val SETTINGS = "settings"
     const val GPS_SOURCES = "gpsSources"
     const val RECOVERY = "recovery"
+    const val CHANGE_LOG = "changeLog"
 }

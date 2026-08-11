@@ -22,9 +22,13 @@ The camera mounts over USB as plain Mass Storage. The app:
 - Dry-run preview with explicit confirmation before any write
 - Skip files that already have GPS EXIF (overwrite requires explicit confirm)
 - RAW+JPEG pairs always tagged together with identical data
-- Persistent change log of every write for auditing
-- Interrupted writes leave either the untouched original or an orphaned `.tmp` — never a
-  corrupted file
+- Persistent change log of every write attempt — tagged, skipped, or failed, and why —
+  reachable from Settings for auditing
+- Crash-safe writes: the original is renamed to a backup, the tagged temp file is renamed
+  into place and verified, and only then is the backup deleted — at every point in that
+  sequence a known-good copy is present under a discoverable name. If the app is killed or
+  crashes mid-write, it detects the interrupted state on next launch and walks you through
+  recovering it; nothing is ever silently lost or left corrupted.
 
 ## Known limitations
 

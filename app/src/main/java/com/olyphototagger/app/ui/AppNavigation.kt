@@ -8,6 +8,8 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.olyphototagger.app.ui.settings.ChangeLogScreen
+import com.olyphototagger.app.ui.settings.ChangeLogViewModel
 import com.olyphototagger.app.ui.settings.GpsSourcesScreen
 import com.olyphototagger.app.ui.settings.GpsSourcesViewModel
 import com.olyphototagger.app.ui.settings.SettingsScreen
@@ -82,7 +84,15 @@ fun AppNavigation(
             SettingsScreen(
                 viewModel = settingsViewModel,
                 onBack = { navController.popBackStack() },
-                onNavigateToGpsSources = { navController.navigate(AppRoute.GPS_SOURCES) }
+                onNavigateToGpsSources = { navController.navigate(AppRoute.GPS_SOURCES) },
+                onNavigateToChangeLog = { navController.navigate(AppRoute.CHANGE_LOG) }
+            )
+        }
+        composable(AppRoute.CHANGE_LOG) {
+            val changeLogViewModel: ChangeLogViewModel = viewModel()
+            ChangeLogScreen(
+                viewModel = changeLogViewModel,
+                onBack = { navController.popBackStack() }
             )
         }
         composable(AppRoute.GPS_SOURCES) {

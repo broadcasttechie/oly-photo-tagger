@@ -76,7 +76,8 @@ class MainWorkflowEndToEndInstrumentedTest {
             geoTagCacheDao = AppDatabase.getInstance(context).geoTagCacheDao(),
             gpsSource = DawarichClient(createDawarichHttpClient(), baseUrl!!, token!!),
             geoInterpolator = GeoInterpolator(maxBracketGap = Duration.ofMinutes(30)),
-            gpsExifWriter = GpsExifWriter(context.contentResolver, ExifToolInvoker(context), context.cacheDir)
+            gpsExifWriter = GpsExifWriter(context.contentResolver, ExifToolInvoker(context), context.cacheDir),
+            writeLogDao = AppDatabase.getInstance(context).writeLogDao()
         )
 
         val scan = orchestrator.scanForMatches(DocumentFile.fromFile(dcimParent), offset)

@@ -354,7 +354,8 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
             geoTagCacheDao = AppDatabase.getInstance(context).geoTagCacheDao(),
             gpsSource = gpsSource,
             geoInterpolator = GeoInterpolator(maxBracketGap = Duration.ofMinutes(gapMinutes.toLong())),
-            gpsExifWriter = gpsExifWriter
+            gpsExifWriter = gpsExifWriter,
+            writeLogDao = AppDatabase.getInstance(context).writeLogDao()
         )
     }
 

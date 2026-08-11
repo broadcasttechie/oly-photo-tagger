@@ -3,6 +3,7 @@ package com.olyphototagger.app.pipeline
 import androidx.documentfile.provider.DocumentFile
 import com.olyphototagger.app.cache.GeoTagCacheDao
 import com.olyphototagger.app.cache.GeoTagCacheEntity
+import com.olyphototagger.app.cache.WriteLogDao
 import com.olyphototagger.app.dcim.CameraFile
 import com.olyphototagger.app.dcim.DcimScanResult
 import com.olyphototagger.app.dcim.DcimScanner
@@ -16,7 +17,9 @@ import com.olyphototagger.app.exif.toInstant
 import com.olyphototagger.app.geotag.GeoInterpolator
 import com.olyphototagger.app.geotag.GeoMatch
 import com.olyphototagger.app.geotag.GpsSource
+import com.olyphototagger.app.write.GpsExifWriteResult
 import com.olyphototagger.app.write.GpsExifWriter
+import com.olyphototagger.app.write.WriteLogMapper
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
@@ -32,7 +35,8 @@ class GeotagOrchestrator(
     private val geoTagCacheDao: GeoTagCacheDao,
     private val gpsSource: GpsSource,
     private val geoInterpolator: GeoInterpolator,
-    private val gpsExifWriter: GpsExifWriter
+    private val gpsExifWriter: GpsExifWriter,
+    private val writeLogDao: WriteLogDao
 ) {
 
     /**
@@ -146,14 +150,21 @@ class GeotagOrchestrator(
         file: CameraFile,
         geo: GeoMatch.Matched,
         overwriteExisting: Boolean
-    ) = gpsExifWriter.write(
-        original = scan.resolve(file)
-            ?: error("No DocumentFile for ${file.displayName} — was it resolved from this scan?"),
-        latitude = geo.latitude,
-        longitude = geo.longitude,
-        altitudeMeters = geo.altitudeMeters,
-        overwriteExisting = overwriteExisting
-    )
+    ): GpsExifWriteResult {
+        val result = gpsExifWriter.write(
+            original = scan.resolve(file)
+                ?: error("No DocumentFile for ${file.displayName} — was it resolved from this scan?"),
+            latitude = geo.latitude,
+            longitude = geo.longitude,
+            altitudeMeters = geo.altitudeMeters,
+            overwriteExisting = overwriteExisting
+        )
+        // Logged here, the one place every write attempt (whatever the outcome) funnels
+        // through, rather than in the ViewModel — so any future caller of applyMatch()
+        // gets a complete audit trail for free, not just today's one UI entry point.
+        writeLogDao.insert(WriteLogMapper.from(file.folderName, file.displayName, result, Instant.now()))
+        return result
+    }
 
     /**
      * Resolves a pair's combined tagged-status + timestamp. Checks the geotag cache

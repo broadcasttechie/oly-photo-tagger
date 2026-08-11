@@ -37,7 +37,8 @@ import com.olyphototagger.app.ui.theme.OlyPhotoTaggerTheme
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBack: () -> Unit,
-    onNavigateToGpsSources: () -> Unit
+    onNavigateToGpsSources: () -> Unit,
+    onNavigateToChangeLog: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -51,6 +52,7 @@ fun SettingsScreen(
         snackbarHostState = snackbarHostState,
         onBack = onBack,
         onNavigateToGpsSources = onNavigateToGpsSources,
+        onNavigateToChangeLog = onNavigateToChangeLog,
         onGapThresholdChange = viewModel::setGapThresholdMinutes,
         onSave = viewModel::save
     )
@@ -63,6 +65,7 @@ private fun SettingsScreenContent(
     snackbarHostState: SnackbarHostState,
     onBack: () -> Unit,
     onNavigateToGpsSources: () -> Unit,
+    onNavigateToChangeLog: () -> Unit,
     onGapThresholdChange: (String) -> Unit,
     onSave: () -> Unit
 ) {
@@ -124,6 +127,16 @@ private fun SettingsScreenContent(
             uiState.saveMessage?.let {
                 Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
             }
+
+            Text("Activity", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Review every write attempt this app has made — what was tagged, skipped, or failed, and why.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedButton(onClick = onNavigateToChangeLog, modifier = Modifier.fillMaxWidth()) {
+                Text("View Change Log")
+            }
         }
     }
 }
@@ -135,7 +148,7 @@ private fun SettingsScreenDefaultPreview() {
         SettingsScreenContent(
             uiState = SettingsUiState(gapThresholdMinutes = "5"),
             snackbarHostState = remember { SnackbarHostState() },
-            onBack = {}, onNavigateToGpsSources = {}, onGapThresholdChange = {}, onSave = {}
+            onBack = {}, onNavigateToGpsSources = {}, onNavigateToChangeLog = {}, onGapThresholdChange = {}, onSave = {}
         )
     }
 }
@@ -147,7 +160,7 @@ private fun SettingsScreenSavedPreview() {
         SettingsScreenContent(
             uiState = SettingsUiState(gapThresholdMinutes = "5", saveMessage = "Settings saved"),
             snackbarHostState = remember { SnackbarHostState() },
-            onBack = {}, onNavigateToGpsSources = {}, onGapThresholdChange = {}, onSave = {}
+            onBack = {}, onNavigateToGpsSources = {}, onNavigateToChangeLog = {}, onGapThresholdChange = {}, onSave = {}
         )
     }
 }
