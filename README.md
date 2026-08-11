@@ -3,6 +3,12 @@
 Android app for reliably geotagging photos from an Olympus OM-D E-M5 Mark III, replacing
 the crash-prone OI.Share geotag workflow.
 
+## Download
+
+Latest release: [GitHub Releases](https://github.com/broadcasttechie/oly-photo-tagger/releases/latest)
+(`arm64-v8a` only, not on Google Play — you'll need to allow installing from the
+downloaded APK).
+
 ## How it works
 
 The camera mounts over USB as plain Mass Storage. The app:

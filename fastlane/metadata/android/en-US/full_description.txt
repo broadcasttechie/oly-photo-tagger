@@ -1,0 +1,20 @@
+Oly Photo Tagger geotags photos from an Olympus OM-D E-M5 Mark III against a real GPS track, replacing the crash-prone geotag step in Olympus's own OI.Share app.
+
+The camera mounts over USB as plain mass storage. The app reads each photo's capture timestamp, fetches a matching GPS track, interpolates position between the nearest track points, and writes standard GPS EXIF tags in place — to both the JPEG and the RAW (.ORF) file of each pair, with identical data.
+
+GPS track sources:
+
+- A self-hosted Dawarich instance (dawarich.app)
+- GPX files, imported via a file picker or shared in from another app (multiple imports pool together into one merged track)
+
+Safeguards:
+
+- A dry-run preview, with each photo's capture date/time, before anything is written
+- Photos are only tagged if a nearby GPS point exists within a configurable time-gap threshold — never silently guessed at
+- Files that already have GPS data are skipped by default
+- Crash-safe writes: the original is renamed to a backup, the new tagged file is renamed into place and verified, and only then is the backup removed. If the app is killed mid-write — including mid-batch, with several files interrupted at once — it detects every incomplete file on next launch and walks you through recovering it. Nothing is silently lost or left corrupted.
+- A persistent change log records every write attempt — tagged, skipped, or failed, and why
+
+Known limitation: Olympus's own OI.Share / OM Image Share app doesn't show RAW files tagged by this app as geotagged, even though the RAW's GPS data is complete and correct everywhere else (Google Photos, exiftool, this app's own verification). This is cosmetic only — no data is missing or wrong — and is documented in detail in the project's known-limitations doc.
+
+Requires an Olympus camera producing JPEG and/or ORF files with a readable capture timestamp. Built and tested against an OM-D E-M5 Mark III; other Olympus models may work but are untested.
