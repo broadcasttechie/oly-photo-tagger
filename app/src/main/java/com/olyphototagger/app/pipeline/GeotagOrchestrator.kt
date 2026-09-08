@@ -59,14 +59,19 @@ class GeotagOrchestrator(
      *   "tag reviewer" goal would set this true to surface them instead.
      * @param dateRange restricts which pairs are considered by capture timestamp, so a
      *   whole card doesn't get processed — or even track-fetched for — at once.
+     * @param onProgress forwarded straight to [classify]'s own per-pair status resolution —
+     *   see [resolveStatusesConcurrently]'s doc. That's the slow part of a scan (a SAF file
+     *   open per pair, worse over USB); the GPS-track fetch and interpolation below it are
+     *   fast in comparison, so progress isn't tracked past this point.
      */
     suspend fun scanForMatches(
         dcimRoot: DocumentFile,
         assumedOffsetForNaiveTimestamps: ZoneOffset,
         dateRange: ClosedRange<Instant>? = null,
-        includeAlreadyTagged: Boolean = false
+        includeAlreadyTagged: Boolean = false,
+        onProgress: suspend (completed: Int, total: Int) -> Unit = { _, _ -> }
     ): ScanResult {
-        val c = classify(dcimRoot, assumedOffsetForNaiveTimestamps, dateRange, includeAlreadyTagged)
+        val c = classify(dcimRoot, assumedOffsetForNaiveTimestamps, dateRange, includeAlreadyTagged, onProgress)
 
         if (c.included.isEmpty()) {
             return ScanResult(emptyList(), c.excluded, c.pairing.ignored, c.pairing.conflicts, c.scan::resolve)

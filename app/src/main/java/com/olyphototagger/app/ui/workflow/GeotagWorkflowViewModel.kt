@@ -309,8 +309,9 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
 
     suspend fun runDryScan(): Boolean {
         val root = _uiState.value.rootUri ?: return false
+        val startedAt = Instant.now()
         _uiState.update {
-            it.copy(isBusy = true, busyMessage = "Matching photos against your GPS track…")
+            it.copy(isBusy = true, busyMessage = "Matching photos against your GPS track…", scanProgress = null)
         }
         val orchestrator = buildOrchestrator()
         if (orchestrator == null) {
@@ -321,13 +322,19 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
         settingsRepository.saveLastCameraOffsetSeconds(_uiState.value.cameraOffsetSeconds)
         return try {
             val dcimRoot = requireNotNull(DocumentFile.fromTreeUri(context, root)) { "Could not open $root" }
-            val result = orchestrator.scanForMatches(dcimRoot, currentOffset(), currentDateRange())
+            // Same per-pair progress plumbing as runPreScan() — this is the path an actual
+            // folder-pick -> Dry Run normally takes, so it needs live feedback just as much
+            // as the optional "check for untagged" button does, especially since this is
+            // the phase real-device testing found could run long over USB.
+            val result = orchestrator.scanForMatches(dcimRoot, currentOffset(), currentDateRange()) { completed, total ->
+                _uiState.update { it.copy(scanProgress = ScanProgress(completed, total, startedAt)) }
+            }
             _uiState.update {
-                it.copy(isBusy = false, busyMessage = null, scanResult = result, deselectedPairKeys = emptySet())
+                it.copy(isBusy = false, busyMessage = null, scanProgress = null, scanResult = result, deselectedPairKeys = emptySet())
             }
             true
         } catch (e: Exception) {
-            _uiState.update { it.copy(isBusy = false, busyMessage = null) }
+            _uiState.update { it.copy(isBusy = false, busyMessage = null, scanProgress = null) }
             _events.tryEmit("Scan failed: ${e.message}")
             false
         }
