@@ -10,6 +10,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
+import com.olyphototagger.app.geotag.FetchProgress
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -82,7 +83,7 @@ class DawarichClientTest {
     }
 
     @Test
-    fun `onProgress reports cumulative points fetched after each page`() = runTest {
+    fun `onProgress reports cumulative points and page position after each page`() = runTest {
         val engine = MockEngine { request ->
             val body = when (request.url.parameters["page"]) {
                 "1" -> """[{"latitude":"1.0","longitude":"1.0","timestamp":100},{"latitude":"1.1","longitude":"1.1","timestamp":101}]"""
@@ -92,11 +93,14 @@ class DawarichClientTest {
             jsonResponse(this, body, totalPages = 2)
         }
         val client = DawarichClient(httpClientWith(engine), "https://dawarich.example", "token")
-        val progressUpdates = mutableListOf<Int>()
+        val progressUpdates = mutableListOf<FetchProgress>()
 
-        client.fetchTrackPoints(Instant.EPOCH, Instant.now()) { fetchedSoFar -> progressUpdates += fetchedSoFar }
+        client.fetchTrackPoints(Instant.EPOCH, Instant.now()) { progressUpdates += it }
 
-        assertEquals(listOf(2, 3), progressUpdates)
+        assertEquals(
+            listOf(FetchProgress(2, page = 1, totalPages = 2), FetchProgress(3, page = 2, totalPages = 2)),
+            progressUpdates
+        )
     }
 
     @Test

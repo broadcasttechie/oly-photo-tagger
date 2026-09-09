@@ -9,6 +9,7 @@ import com.olyphototagger.app.pipeline.PairWriteResult
 import com.olyphototagger.app.pipeline.PreScanSummary
 import com.olyphototagger.app.pipeline.ProposedMatch
 import com.olyphototagger.app.pipeline.ScanResult
+import com.olyphototagger.app.pipeline.TrackFetchProgress
 import com.olyphototagger.app.cache.WriteLogResultType
 import com.olyphototagger.app.ui.settings.GpxFileUiState
 import com.olyphototagger.app.ui.settings.WriteLogEntryUiState
@@ -107,6 +108,17 @@ internal object PreviewFixtures {
         completed = 340,
         total = 1000,
         startedAt = Instant.now().minusSeconds(40)
+    )
+
+    val trackFetchProgress = TrackFetchProgress(
+        pointsSoFar = 142,
+        page = 4,
+        totalPages = 12,
+        clusterIndex = 2,
+        clusterCount = 3,
+        rangeStart = Instant.parse("2026-06-01T00:00:00Z"),
+        rangeEnd = Instant.parse("2026-06-01T23:59:59Z"),
+        clusterStartedAt = Instant.now().minusSeconds(9)
     )
 
     val runDuration: Duration = Duration.ofSeconds(47)

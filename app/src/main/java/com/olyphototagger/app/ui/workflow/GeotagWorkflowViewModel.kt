@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.olyphototagger.app.dcim.DcimScanner
 import com.olyphototagger.app.geotag.GeoMatch
 import com.olyphototagger.app.pipeline.GeotagOrchestrator
+import com.olyphototagger.app.pipeline.TrackFetchProgress
 import com.olyphototagger.app.pipeline.buildGeotagOrchestrator
 import com.olyphototagger.app.settings.SettingsRepository
 import com.olyphototagger.app.dcim.PhotoPair
@@ -19,6 +20,8 @@ import com.olyphototagger.app.write.IncompleteWriteScanner
 import com.olyphototagger.app.write.RecoveryActionResult
 import com.olyphototagger.app.write.RecoveryChoice
 import com.olyphototagger.app.write.RecoveryOptions
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.BufferOverflow
@@ -64,6 +67,11 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
     // extraBufferCapacity + DROP_OLDEST keeps every emit() call here non-suspending.
     private val _events = MutableSharedFlow<String>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val events: SharedFlow<String> = _events.asSharedFlow()
+
+    // Backs cancelScan()/runCancellable() — see their own docs. Not exposed in
+    // WorkflowUiState: nothing renders it directly, HomeScreen just always offers a Stop
+    // button while isBusy is true and lets cancelScan() be a no-op if it's already gone.
+    private var scanJob: Job? = null
 
     init {
         // WriteService.status is a process-wide StateFlow (see its own doc) — it replays its
@@ -283,8 +291,8 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
         )
     }
 
-    suspend fun runPreScan(): Boolean {
-        val root = _uiState.value.rootUri ?: return false
+    suspend fun runPreScan(): Boolean = runCancellable {
+        val root = _uiState.value.rootUri ?: return@runCancellable false
         val startedAt = Instant.now()
         _uiState.update {
             it.copy(isBusy = true, busyMessage = "Scanning for photos missing GPS tags…", scanProgress = null)
@@ -293,15 +301,19 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
         if (orchestrator == null) {
             _uiState.update { it.copy(isBusy = false, busyMessage = null) }
             _events.tryEmit(MISSING_GPS_SOURCE_MESSAGE)
-            return false
+            return@runCancellable false
         }
-        return try {
+        try {
             val dcimRoot = requireNotNull(DocumentFile.fromTreeUri(context, root)) { "Could not open $root" }
             val summary = orchestrator.preScan(dcimRoot, currentOffset(), currentDateRange()) { completed, total ->
                 _uiState.update { it.copy(scanProgress = ScanProgress(completed, total, startedAt)) }
             }
             _uiState.update { it.copy(isBusy = false, busyMessage = null, scanProgress = null, preScanSummary = summary) }
             true
+        } catch (e: CancellationException) {
+            _uiState.update { it.copy(isBusy = false, busyMessage = null, scanProgress = null) }
+            _events.tryEmit("Scan stopped")
+            throw e
         } catch (e: Exception) {
             _uiState.update { it.copy(isBusy = false, busyMessage = null, scanProgress = null) }
             _events.tryEmit("Prescan failed: ${e.message}")
@@ -309,20 +321,20 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
-    suspend fun runDryScan(): Boolean {
-        val root = _uiState.value.rootUri ?: return false
+    suspend fun runDryScan(): Boolean = runCancellable {
+        val root = _uiState.value.rootUri ?: return@runCancellable false
         val startedAt = Instant.now()
         _uiState.update {
-            it.copy(isBusy = true, busyMessage = "Matching photos against your GPS track…", scanProgress = null)
+            it.copy(isBusy = true, busyMessage = "Matching photos against your GPS track…", scanProgress = null, trackFetchProgress = null)
         }
         val orchestrator = buildOrchestrator()
         if (orchestrator == null) {
             _uiState.update { it.copy(isBusy = false, busyMessage = null) }
             _events.tryEmit(MISSING_GPS_SOURCE_MESSAGE)
-            return false
+            return@runCancellable false
         }
         settingsRepository.saveLastCameraOffsetSeconds(_uiState.value.cameraOffsetSeconds)
-        return try {
+        try {
             val dcimRoot = requireNotNull(DocumentFile.fromTreeUri(context, root)) { "Could not open $root" }
             // Same per-pair progress plumbing as runPreScan() — this is the path an actual
             // folder-pick -> Dry Run normally takes, so it needs live feedback just as much
@@ -335,30 +347,67 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
                 onProgress = { completed, total ->
                     _uiState.update { it.copy(scanProgress = ScanProgress(completed, total, startedAt)) }
                 },
-                // Fires once per fetched page — see DawarichClient.fetchTrackPoints' own doc
-                // for why this step, not just the per-pair scan above, needed live feedback:
-                // an unfiltered whole-folder scan's implied date range can turn this into a
-                // many-minute fetch with previously no sign it was doing anything at all.
-                // scanProgress is cleared because its own "N of M" no longer applies to this
-                // phase — the indeterminate bar this leaves HomeScreen showing is honest here,
-                // there's no known total point count to show a fraction against.
-                onTrackFetchProgress = { fetchedSoFar ->
+                // Fires once per fetched page — see GeotagOrchestrator.fetchClusteredTrack's
+                // own doc for why this step, not just the per-pair scan above, needed live
+                // feedback: an unfiltered whole-folder scan's implied date range can turn
+                // this into a many-minute fetch with previously no sign it was doing
+                // anything at all. scanProgress is cleared because its own "N of M" is a
+                // different phase's fraction — HomeScreen renders trackFetchProgress's own
+                // page/totalPages fraction and ETA instead once this fires.
+                onTrackFetchProgress = { progress ->
                     _uiState.update {
                         it.copy(
-                            busyMessage = "Fetching your GPS track… $fetchedSoFar point${if (fetchedSoFar == 1) "" else "s"} so far",
-                            scanProgress = null
+                            busyMessage = "Fetching your GPS track…",
+                            scanProgress = null,
+                            trackFetchProgress = progress
                         )
                     }
                 }
             )
             _uiState.update {
-                it.copy(isBusy = false, busyMessage = null, scanProgress = null, scanResult = result, deselectedPairKeys = emptySet())
+                it.copy(
+                    isBusy = false, busyMessage = null, scanProgress = null, trackFetchProgress = null,
+                    scanResult = result, deselectedPairKeys = emptySet()
+                )
             }
             true
+        } catch (e: CancellationException) {
+            _uiState.update { it.copy(isBusy = false, busyMessage = null, scanProgress = null, trackFetchProgress = null) }
+            _events.tryEmit("Scan stopped")
+            throw e
         } catch (e: Exception) {
-            _uiState.update { it.copy(isBusy = false, busyMessage = null, scanProgress = null) }
+            _uiState.update { it.copy(isBusy = false, busyMessage = null, scanProgress = null, trackFetchProgress = null) }
             _events.tryEmit("Scan failed: ${e.message}")
             false
+        }
+    }
+
+    /** Cancels whichever of [runPreScan]/[runDryScan] is currently in flight. The two are
+     *  mutually exclusive in the real UI (both buttons that start them are disabled while
+     *  [WorkflowUiState.isBusy] is true), so one shared job reference is enough. A no-op
+     *  if nothing is running. Deliberately scoped to just these two — unlike [startRun],
+     *  neither touches a photo, so there's no partial-batch consistency question a stop
+     *  needs to worry about. */
+    fun cancelScan() {
+        scanJob?.cancel()
+    }
+
+    /**
+     * Runs [block] as a [viewModelScope]-owned job — not just inline in the calling
+     * suspend function — so [cancelScan] has a real job to cancel regardless of which
+     * Composable scope originally called [runPreScan]/[runDryScan]. A cancelled job's
+     * [Job.await] throws [CancellationException] right back out of this function, which
+     * is exactly what an ordinary `scope.launch { viewModel.runDryScan() }` call site
+     * already handles correctly with no changes: that coroutine just quietly ends, same
+     * as if the user had navigated away mid-scan.
+     */
+    private suspend fun <T> runCancellable(block: suspend () -> T): T {
+        val job = viewModelScope.async { block() }
+        scanJob = job
+        return try {
+            job.await()
+        } finally {
+            if (scanJob === job) scanJob = null
         }
     }
 

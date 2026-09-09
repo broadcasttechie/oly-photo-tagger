@@ -11,6 +11,7 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
+import com.olyphototagger.app.geotag.FetchProgress
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -134,10 +135,10 @@ class CachingDawarichSourceTest {
         val source = cachingSource(countingClient(requestCount, onePoint), dao)
         source.fetchTrackPoints(Instant.ofEpochSecond(0), Instant.ofEpochSecond(1000))
 
-        val progressUpdates = mutableListOf<Int>()
+        val progressUpdates = mutableListOf<FetchProgress>()
         source.fetchTrackPoints(Instant.ofEpochSecond(0), Instant.ofEpochSecond(1000)) { progressUpdates += it }
 
-        assertEquals(listOf(1), progressUpdates)
+        assertEquals(listOf(FetchProgress(1, page = 1, totalPages = 1)), progressUpdates)
     }
 
     @Test

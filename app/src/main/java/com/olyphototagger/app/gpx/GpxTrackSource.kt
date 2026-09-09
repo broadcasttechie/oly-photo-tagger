@@ -2,6 +2,7 @@ package com.olyphototagger.app.gpx
 
 import com.olyphototagger.app.cache.GpxTrackDao
 import com.olyphototagger.app.cache.toTrackPoint
+import com.olyphototagger.app.geotag.FetchProgress
 import com.olyphototagger.app.geotag.GpsSource
 import com.olyphototagger.app.geotag.TrackPoint
 import java.time.Instant
@@ -18,7 +19,7 @@ class GpxTrackSource(private val dao: GpxTrackDao) : GpsSource {
     override suspend fun fetchTrackPoints(
         startInclusive: Instant,
         endInclusive: Instant,
-        onProgress: suspend (fetchedSoFar: Int) -> Unit
+        onProgress: suspend (FetchProgress) -> Unit
     ): List<TrackPoint> =
         dao.pointsInRange(startInclusive.epochSecond, endInclusive.epochSecond)
             .map { it.toTrackPoint() }

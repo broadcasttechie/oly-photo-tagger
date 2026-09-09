@@ -22,6 +22,7 @@ import com.olyphototagger.app.exif.PhotoExifStatusReader
 import com.olyphototagger.app.exif.toCaptureTimestamp
 import com.olyphototagger.app.exif.toInstant
 import com.olyphototagger.app.exiftool.ExifToolInvoker
+import com.olyphototagger.app.geotag.FetchProgress
 import com.olyphototagger.app.geotag.GeoInterpolator
 import com.olyphototagger.app.geotag.GeoMatch
 import com.olyphototagger.app.geotag.GpsSource
@@ -79,10 +80,9 @@ class GeotagOrchestrator(
      *   SAF file open per pair, worse over USB) — *usually*: the GPS-track fetch just below
      *   can take much longer than this whole phase when the included pairs' combined time
      *   span is wide, which is exactly what [onTrackFetchProgress] is for.
-     * @param onTrackFetchProgress cumulative points fetched so far across every cluster's
-     *   fetch — see [fetchClusteredTrack] and [com.olyphototagger.app.geotag.GpsSource.
-     *   fetchTrackPoints]'s own docs for why it's a running count rather than a
-     *   completed/total pair.
+     * @param onTrackFetchProgress see [fetchClusteredTrack]'s own doc — reports which
+     *   cluster/date-range is currently being fetched and enough to project a real ETA
+     *   from, not just a cumulative point count.
      */
     suspend fun scanForMatches(
         dcimRoot: DocumentFile,
@@ -90,7 +90,7 @@ class GeotagOrchestrator(
         dateRange: ClosedRange<Instant>? = null,
         includeAlreadyTagged: Boolean = false,
         onProgress: suspend (completed: Int, total: Int) -> Unit = { _, _ -> },
-        onTrackFetchProgress: suspend (fetchedSoFar: Int) -> Unit = {}
+        onTrackFetchProgress: suspend (TrackFetchProgress) -> Unit = {}
     ): ScanResult {
         val c = classify(dcimRoot, assumedOffsetForNaiveTimestamps, dateRange, includeAlreadyTagged, onProgress)
 
@@ -118,21 +118,43 @@ class GeotagOrchestrator(
      * and each cluster gets its own `[start, end]` fetch — a card with two sessions weeks
      * apart now costs two *narrow* fetches, not one enormous one spanning the weeks between.
      *
-     * [onProgress] reports a running total across every cluster's fetch, in cluster order —
-     * still a cumulative count, not completed/total, for the same reason [GpsSource.
-     * fetchTrackPoints] itself reports it that way.
+     * [onProgress] composes each cluster's own [FetchProgress] (page/totalPages *within
+     * that cluster's* fetch — a real completed/total pair as soon as the first page
+     * lands) with which cluster it is and the `[start, end]` it covers, into
+     * [TrackFetchProgress] — enough for a caller to show both which date is currently
+     * being retrieved and a real per-cluster ETA, neither of which [FetchProgress] alone
+     * carries (it doesn't know about clusters) and neither of which a bare cumulative
+     * point count (the old shape of this callback) could ever support, since the total
+     * *point* count for a cluster isn't known until its fetch is already done.
      */
     suspend fun fetchClusteredTrack(
         timestamps: List<Instant>,
-        onProgress: suspend (fetchedSoFar: Int) -> Unit = {}
+        onProgress: suspend (TrackFetchProgress) -> Unit = {}
     ): List<TrackPoint> {
+        val clusters = TimestampClustering.cluster(timestamps)
         val track = mutableListOf<TrackPoint>()
-        for (cluster in TimestampClustering.cluster(timestamps)) {
+        clusters.forEachIndexed { index, cluster ->
             val alreadyFetched = track.size
-            track += gpsSource.fetchTrackPoints(
-                cluster.first().minus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES),
-                cluster.last().plus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES)
-            ) { fetchedInCluster -> onProgress(alreadyFetched + fetchedInCluster) }
+            val rangeStart = cluster.first().minus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES)
+            val rangeEnd = cluster.last().plus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES)
+            // Captured once per cluster, not once for the whole call — each cluster's own
+            // fetch is what a page-based ETA projects from (see TrackFetchProgress's doc),
+            // so its "elapsed so far" needs to start from this cluster's own first request.
+            val clusterStartedAt = Instant.now()
+            track += gpsSource.fetchTrackPoints(rangeStart, rangeEnd) { fetchProgress ->
+                onProgress(
+                    TrackFetchProgress(
+                        pointsSoFar = alreadyFetched + fetchProgress.fetchedSoFar,
+                        page = fetchProgress.page,
+                        totalPages = fetchProgress.totalPages,
+                        clusterIndex = index + 1,
+                        clusterCount = clusters.size,
+                        rangeStart = rangeStart,
+                        rangeEnd = rangeEnd,
+                        clusterStartedAt = clusterStartedAt
+                    )
+                )
+            }
         }
         return track.sortedBy { it.time }
     }

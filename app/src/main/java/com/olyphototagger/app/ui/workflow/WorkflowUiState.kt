@@ -5,6 +5,7 @@ import com.olyphototagger.app.dcim.PhotoPair
 import com.olyphototagger.app.pipeline.PairWriteResult
 import com.olyphototagger.app.pipeline.PreScanSummary
 import com.olyphototagger.app.pipeline.ScanResult
+import com.olyphototagger.app.pipeline.TrackFetchProgress
 import com.olyphototagger.app.write.IncompleteWrite
 import com.olyphototagger.app.write.IncompleteWriteScanResult
 import java.time.Duration
@@ -55,6 +56,11 @@ data class WorkflowUiState(
     val isBusy: Boolean = false,
     val busyMessage: String? = null,
     val scanProgress: ScanProgress? = null,
+    /** Live progress for the Dawarich-track-fetch phase of [GeotagWorkflowViewModel.
+     *  runDryScan] — which cluster/date-range is currently being retrieved, plus enough
+     *  to project a real ETA from. Null outside that phase; see [scanProgress]'s own doc
+     *  for the equivalent during the per-pair status-check phase. */
+    val trackFetchProgress: TrackFetchProgress? = null,
     val preScanSummary: PreScanSummary? = null,
     val scanResult: ScanResult? = null,
     /** Pairs the user has explicitly excluded from the upcoming write, keyed by

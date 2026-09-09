@@ -1,5 +1,6 @@
 package com.olyphototagger.app.dawarich
 
+import com.olyphototagger.app.geotag.FetchProgress
 import com.olyphototagger.app.geotag.GpsSource
 import com.olyphototagger.app.geotag.TrackPoint
 import io.ktor.client.HttpClient
@@ -52,7 +53,7 @@ class DawarichClient(
     override suspend fun fetchTrackPoints(
         startInclusive: Instant,
         endInclusive: Instant,
-        onProgress: suspend (fetchedSoFar: Int) -> Unit
+        onProgress: suspend (FetchProgress) -> Unit
     ): List<TrackPoint> {
         val points = mutableListOf<TrackPoint>()
         var page = 1
@@ -89,7 +90,7 @@ class DawarichClient(
                     "${System.currentTimeMillis() - pageStartedAtMs}ms this page, " +
                     "${System.currentTimeMillis() - startedAtMs}ms total"
             )
-            onProgress(points.size)
+            onProgress(FetchProgress(points.size, page, totalPages))
             page++
         } while (page <= totalPages)
 

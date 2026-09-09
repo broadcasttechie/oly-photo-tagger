@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MyLocation
@@ -67,6 +68,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.olyphototagger.app.pipeline.PreScanSummary
+import com.olyphototagger.app.pipeline.TrackFetchProgress
 import com.olyphototagger.app.ui.PreviewFixtures
 import com.olyphototagger.app.ui.theme.OlyPhotoTaggerTheme
 import kotlinx.coroutines.launch
@@ -84,7 +86,8 @@ fun HomeScreen(
     onNavigateToDryRun: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToGpsSources: () -> Unit,
-    onNavigateToRecovery: () -> Unit
+    onNavigateToRecovery: () -> Unit,
+    onNavigateToChangeLog: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -129,7 +132,9 @@ fun HomeScreen(
         onPickFolder = { pickFolder.launch(null) },
         onNavigateToSettings = onNavigateToSettings,
         onNavigateToRecovery = onNavigateToRecovery,
+        onNavigateToChangeLog = onNavigateToChangeLog,
         onPreScan = { scope.launch { viewModel.runPreScan() } },
+        onCancelScan = viewModel::cancelScan,
         onDateRangeChange = viewModel::setDateRange,
         onLoadLocalOffset = viewModel::loadLocalOffset,
         onAdjustOffsetHours = viewModel::adjustOffsetHours,
@@ -156,7 +161,9 @@ private fun HomeScreenContent(
     onPickFolder: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToRecovery: () -> Unit,
+    onNavigateToChangeLog: () -> Unit,
     onPreScan: () -> Unit,
+    onCancelScan: () -> Unit,
     onDateRangeChange: (Instant?, Instant?) -> Unit,
     onLoadLocalOffset: () -> Unit,
     onAdjustOffsetHours: (Int) -> Unit,
@@ -169,6 +176,12 @@ private fun HomeScreenContent(
                 TopAppBar(
                     title = { Text("Oly Photo Tagger") },
                     actions = {
+                        // Promoted here from a button buried in Settings — a record of
+                        // what this app actually did to real photos deserves to be
+                        // reachable in one tap, not two.
+                        IconButton(onClick = onNavigateToChangeLog) {
+                            Icon(Icons.Default.History, contentDescription = "Change log")
+                        }
                         IconButton(onClick = onNavigateToSettings) {
                             Icon(Icons.Default.Settings, contentDescription = "Settings")
                         }
@@ -198,7 +211,7 @@ private fun HomeScreenContent(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Column {
+                        Column(Modifier.weight(1f)) {
                             Text(
                                 uiState.busyMessage ?: "Working…",
                                 style = MaterialTheme.typography.bodyMedium
@@ -218,7 +231,31 @@ private fun HomeScreenContent(
                                         )
                                     }
                             }
+                            uiState.trackFetchProgress?.let { progress ->
+                                Text(
+                                    formatTrackFetchStatus(progress),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                // Projected from page/totalPages *within the current
+                                // cluster's own fetch*, not a whole-operation estimate —
+                                // see TrackFetchProgress's own doc for why a cluster is
+                                // the largest unit this can honestly be based on.
+                                estimateRemaining(progress.page, progress.totalPages, progress.clusterStartedAt)
+                                    ?.let { remaining ->
+                                        Text(
+                                            "About ${formatDuration(remaining)} remaining" +
+                                                if (progress.clusterCount > 1) " for this session" else "",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                            }
                         }
+                        // Scoped to scan/preview only — the write batch (ProgressScreen) is
+                        // deliberately not stoppable this way: it touches real photos, and
+                        // each write's own crash-safety/Recovery flow is how that's handled.
+                        TextButton(onClick = onCancelScan) { Text("Stop") }
                     }
                 }
             }
@@ -300,7 +337,8 @@ private fun HomeScreenEmptyPreview() {
         HomeScreenContent(
             uiState = WorkflowUiState(),
             snackbarHostState = remember { SnackbarHostState() },
-            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
+            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onNavigateToChangeLog = {}, onPreScan = {},
+            onCancelScan = {},
             onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {},
             onSetOffsetSeconds = {}, onDryRun = {}
         )
@@ -319,7 +357,8 @@ private fun HomeScreenPopulatedPreview() {
                 preScanSummary = PreviewFixtures.preScanSummary
             ),
             snackbarHostState = remember { SnackbarHostState() },
-            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
+            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onNavigateToChangeLog = {}, onPreScan = {},
+            onCancelScan = {},
             onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {},
             onSetOffsetSeconds = {}, onDryRun = {}
         )
@@ -338,7 +377,8 @@ private fun HomeScreenDarkPreview() {
                 preScanSummary = PreviewFixtures.preScanSummary
             ),
             snackbarHostState = remember { SnackbarHostState() },
-            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
+            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onNavigateToChangeLog = {}, onPreScan = {},
+            onCancelScan = {},
             onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {},
             onSetOffsetSeconds = {}, onDryRun = {}
         )
@@ -356,7 +396,8 @@ private fun HomeScreenRecoveryPreview() {
                 pendingRecoveries = PreviewFixtures.pendingRecoveries
             ),
             snackbarHostState = remember { SnackbarHostState() },
-            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
+            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onNavigateToChangeLog = {}, onPreScan = {},
+            onCancelScan = {},
             onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {},
             onSetOffsetSeconds = {}, onDryRun = {}
         )
@@ -375,7 +416,8 @@ private fun HomeScreenBusyPreview() {
                 busyMessage = "Checking for interrupted writes…"
             ),
             snackbarHostState = remember { SnackbarHostState() },
-            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
+            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onNavigateToChangeLog = {}, onPreScan = {},
+            onCancelScan = {},
             onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {},
             onSetOffsetSeconds = {}, onDryRun = {}
         )
@@ -395,7 +437,29 @@ private fun HomeScreenScanProgressPreview() {
                 scanProgress = PreviewFixtures.scanProgress
             ),
             snackbarHostState = remember { SnackbarHostState() },
-            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onPreScan = {},
+            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onNavigateToChangeLog = {}, onPreScan = {},
+            onCancelScan = {},
+            onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {},
+            onSetOffsetSeconds = {}, onDryRun = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Busy — fetching GPS track")
+@Composable
+private fun HomeScreenTrackFetchProgressPreview() {
+    OlyPhotoTaggerTheme(dynamicColor = false) {
+        HomeScreenContent(
+            uiState = WorkflowUiState(
+                rootUri = android.net.Uri.parse("content://fake/DCIM"),
+                rootDisplayName = "DCIM",
+                isBusy = true,
+                busyMessage = "Fetching your GPS track…",
+                trackFetchProgress = PreviewFixtures.trackFetchProgress
+            ),
+            snackbarHostState = remember { SnackbarHostState() },
+            onPickFolder = {}, onNavigateToSettings = {}, onNavigateToRecovery = {}, onNavigateToChangeLog = {}, onPreScan = {},
+            onCancelScan = {},
             onDateRangeChange = { _, _ -> }, onLoadLocalOffset = {}, onAdjustOffsetHours = {},
             onSetOffsetSeconds = {}, onDryRun = {}
         )
@@ -720,6 +784,18 @@ private fun sanitizeOffsetDigits(input: String, max: Int): String {
     val digitsOnly = input.filter(Char::isDigit).take(2)
     val value = digitsOnly.toIntOrNull() ?: return digitsOnly
     return if (value > max) max.toString() else digitsOnly
+}
+
+/** "3 Jun 2026 — 142 points so far", or with a session suffix once there's more than one
+ *  cluster to distinguish: "3–5 Jun 2026, session 2 of 3 — 142 points so far". */
+private fun formatTrackFetchStatus(progress: TrackFetchProgress): String {
+    val fmt = DateTimeFormatter.ofPattern("d MMM yyyy").withZone(ZoneId.systemDefault())
+    val startDate = fmt.format(progress.rangeStart)
+    val endDate = fmt.format(progress.rangeEnd)
+    val dateText = if (startDate == endDate) startDate else "$startDate – $endDate"
+    val sessionText = if (progress.clusterCount > 1) ", session ${progress.clusterIndex} of ${progress.clusterCount}" else ""
+    val pointsText = "${progress.pointsSoFar} point${if (progress.pointsSoFar == 1) "" else "s"} so far"
+    return "$dateText$sessionText — $pointsText"
 }
 
 private fun formatOffset(totalSeconds: Int): String {

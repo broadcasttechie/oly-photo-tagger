@@ -197,7 +197,14 @@ class DebugControlReceiver : BroadcastReceiver() {
         Log.i(TAG, "FETCH_CLUSTERED_TRACK: ${timestamps.size} timestamps -> ${clusters.size} cluster(s)")
 
         val startedAtMs = System.currentTimeMillis()
-        val track = orchestrator.fetchClusteredTrack(timestamps)
+        val track = orchestrator.fetchClusteredTrack(timestamps) { progress ->
+            Log.i(
+                TAG,
+                "FETCH_CLUSTERED_TRACK progress: cluster ${progress.clusterIndex}/${progress.clusterCount} " +
+                    "[${progress.rangeStart}, ${progress.rangeEnd}], page ${progress.page}/${progress.totalPages}, " +
+                    "${progress.pointsSoFar} points so far"
+            )
+        }
         val elapsedMs = System.currentTimeMillis() - startedAtMs
         Log.i(TAG, "FETCH_CLUSTERED_TRACK done in ${elapsedMs}ms — ${track.size} total points across ${clusters.size} cluster(s)")
     }

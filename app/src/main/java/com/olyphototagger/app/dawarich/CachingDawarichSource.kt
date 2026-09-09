@@ -4,6 +4,7 @@ import com.olyphototagger.app.cache.DawarichCacheDao
 import com.olyphototagger.app.cache.DawarichFetchedRangeEntity
 import com.olyphototagger.app.cache.toDawarichEntity
 import com.olyphototagger.app.cache.toTrackPoint
+import com.olyphototagger.app.geotag.FetchProgress
 import com.olyphototagger.app.geotag.GpsSource
 import com.olyphototagger.app.geotag.TrackPoint
 import java.time.Duration
@@ -40,14 +41,16 @@ class CachingDawarichSource(
     override suspend fun fetchTrackPoints(
         startInclusive: Instant,
         endInclusive: Instant,
-        onProgress: suspend (fetchedSoFar: Int) -> Unit
+        onProgress: suspend (FetchProgress) -> Unit
     ): List<TrackPoint> {
         val startEpoch = startInclusive.epochSecond
         val endEpoch = endInclusive.epochSecond
 
         if (cacheDao.findCoveringRange(startEpoch, endEpoch) != null) {
             val cached = cacheDao.pointsInRange(startEpoch, endEpoch).map { it.toTrackPoint() }
-            onProgress(cached.size)
+            // A cache hit is instant and already complete — 1/1, not some fraction of an
+            // in-flight fetch — so a page-based ETA downstream sees "done", not a stall.
+            onProgress(FetchProgress(cached.size, page = 1, totalPages = 1))
             return cached
         }
 
