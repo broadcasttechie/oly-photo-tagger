@@ -113,7 +113,8 @@ private fun ProgressScreenContent(
                 }
             }
             Text(
-                "Don't close the app while this is running.",
+                "It's fine to switch to another app — this keeps running. Just don't " +
+                    "force-stop Oly Photo Tagger while it's in progress.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 24.dp)

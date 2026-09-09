@@ -6,23 +6,13 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.olyphototagger.app.cache.AppDatabase
-import com.olyphototagger.app.dawarich.DawarichClient
-import com.olyphototagger.app.dawarich.createDawarichHttpClient
 import com.olyphototagger.app.dcim.DcimScanner
-import com.olyphototagger.app.exif.PhotoExifStatusReader
-import com.olyphototagger.app.exiftool.ExifToolInvoker
-import com.olyphototagger.app.geotag.GeoInterpolator
 import com.olyphototagger.app.geotag.GeoMatch
-import com.olyphototagger.app.geotag.GpsSource
-import com.olyphototagger.app.gpx.GpxTrackSource
 import com.olyphototagger.app.pipeline.GeotagOrchestrator
-import com.olyphototagger.app.pipeline.PairWriteResult
-import com.olyphototagger.app.settings.ActiveGpsSourceResolver
-import com.olyphototagger.app.settings.GpsSourceType
+import com.olyphototagger.app.pipeline.buildGeotagOrchestrator
 import com.olyphototagger.app.settings.SettingsRepository
 import com.olyphototagger.app.dcim.PhotoPair
-import com.olyphototagger.app.write.GpsExifWriter
+import com.olyphototagger.app.service.WriteService
 import com.olyphototagger.app.write.IncompleteWrite
 import com.olyphototagger.app.write.IncompleteWriteClassification
 import com.olyphototagger.app.write.IncompleteWriteScanner
@@ -44,7 +34,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
@@ -64,12 +53,6 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
     private val settingsRepository = SettingsRepository(context)
     private val dcimScanner = DcimScanner(context.contentResolver)
     private val incompleteWriteScanner = IncompleteWriteScanner(dcimScanner)
-    private val exifStatusReader = PhotoExifStatusReader(context.contentResolver)
-    private val gpsExifWriter = GpsExifWriter(
-        context.contentResolver,
-        ExifToolInvoker(context),
-        context.cacheDir
-    )
 
     private val _uiState = MutableStateFlow(WorkflowUiState())
     val uiState: StateFlow<WorkflowUiState> = _uiState.asStateFlow()
@@ -83,6 +66,21 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
     val events: SharedFlow<String> = _events.asSharedFlow()
 
     init {
+        // WriteService.status is a process-wide StateFlow (see its own doc) — it replays its
+        // current value to a new collector, so this correctly resumes showing live or
+        // just-finished progress even for a ViewModel constructed fresh after the Activity
+        // was recreated mid-batch, with no extra reattachment logic needed.
+        viewModelScope.launch {
+            WriteService.status.collect { status ->
+                when (status) {
+                    WriteService.Status.Idle -> Unit
+                    is WriteService.Status.Running -> _uiState.update { it.copy(runProgress = status.progress) }
+                    is WriteService.Status.Finished -> _uiState.update {
+                        it.copy(runProgress = null, runResults = status.results, runDuration = status.duration)
+                    }
+                }
+            }
+        }
         viewModelScope.launch {
             val savedOffset = settingsRepository.lastCameraOffsetSeconds.first()
             _uiState.update { it.copy(cameraOffsetSeconds = savedOffset ?: currentLocalOffsetSeconds()) }
@@ -158,6 +156,10 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
 
     /** Clears results from a previous run so the workflow can start over on the same root. */
     fun resetForNextRun() {
+        // Without this, WriteService.status (a StateFlow that replays its latest value) would
+        // hand a much-later, unrelated fresh ViewModel this same already-acknowledged Finished
+        // result the instant it starts collecting.
+        WriteService.resetIfFinished()
         _uiState.update {
             it.copy(
                 preScanSummary = null,
@@ -345,11 +347,13 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
      * response to an explicit user confirmation on the dry-run screen — this is the one
      * function in the whole app that touches the original photos.
      *
-     * Launches in viewModelScope rather than being a plain suspend function the caller
-     * awaits directly: the caller navigates to the progress screen right after starting
-     * this, and a screen-scoped coroutine (rememberCoroutineScope()) would be cancelled
-     * by that navigation, aborting the write batch mid-flight. This must survive
-     * navigation regardless of what the UI does next.
+     * Dispatches to [WriteService] rather than running the batch itself: a real batch can run
+     * 10-15+ minutes (confirmed on real hardware), and viewModelScope survives in-app
+     * navigation (Progress -> Summary) but not the app being merely backgrounded — nothing
+     * stops the OS reclaiming the whole process once the Activity is stopped. A foreground
+     * service is the only thing that actually protects this. [WriteService.status] is
+     * collected back into [_uiState] from [init], so this function's own job just needs to
+     * validate, compute the batch, and hand it off.
      */
     fun startRun() {
         if (_uiState.value.runProgress != null) return // already running
@@ -359,8 +363,7 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
                 _events.tryEmit("Nothing to run — no dry-run scan yet.")
                 return@launch
             }
-            val orchestrator = buildOrchestrator()
-            if (orchestrator == null) {
+            if (buildOrchestrator() == null) { // pre-flight only — WriteService builds its own
                 _events.tryEmit(MISSING_GPS_SOURCE_MESSAGE)
                 return@launch
             }
@@ -378,29 +381,12 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
                 it.geoMatch is GeoMatch.Matched && it.pair.stableKey() !in deselected
             }
             val startedAt = Instant.now()
+            // Shown immediately, before WriteService has posted anything of its own — the
+            // user taps through to the progress screen and should see it's actually started.
             _uiState.update {
                 it.copy(runProgress = RunProgress(0, matches.size, "Starting…", startedAt), runResults = null)
             }
-
-            var results: List<PairWriteResult> = emptyList()
-            try {
-                // Writes run several at a time now (see applyMatches' own doc for why
-                // that's safe) — completion order isn't match order, so the progress
-                // label reports whichever one just finished rather than "the current
-                // one", which wouldn't mean anything once more than one is in flight.
-                results = orchestrator.applyMatches(scanResult, matches) { result, completed, total ->
-                    _uiState.update { it.copy(runProgress = RunProgress(completed, total, "Wrote ${result.pair.baseName}", startedAt)) }
-                }
-            } finally {
-                // Always land on a definite result, even if something threw partway
-                // through — an indefinitely "in progress" state would leave the user
-                // unable to tell whether their photos were actually touched. Individual
-                // write failures never reach here (applyMatches turns those into normal
-                // Failed results, same as always), so this is now a last-resort net for
-                // something more fundamental going wrong.
-                val duration = Duration.between(startedAt, Instant.now())
-                _uiState.update { it.copy(runProgress = null, runResults = results, runDuration = duration) }
-            }
+            WriteService.start(context, scanResult, matches, startedAt)
         }
     }
 
@@ -414,30 +400,9 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
         return if (start != null && end != null) start..end else null
     }
 
-    private suspend fun buildOrchestrator(): GeotagOrchestrator? {
-        val dawarichConfig = settingsRepository.dawarichConfig.first()
-        val activeSource = settingsRepository.activeGpsSource.first()
-        val resolved = ActiveGpsSourceResolver.resolve(activeSource, hasDawarichConfig = dawarichConfig != null)
-            ?: return null
-        val gpsSource: GpsSource = when (resolved) {
-            GpsSourceType.DAWARICH -> DawarichClient(
-                createDawarichHttpClient(),
-                requireNotNull(dawarichConfig).baseUrl,
-                dawarichConfig.apiToken
-            )
-            GpsSourceType.GPX -> GpxTrackSource(AppDatabase.getInstance(context).gpxTrackDao())
-        }
-        val gapMinutes = settingsRepository.gapThresholdMinutes.first()
-        return GeotagOrchestrator(
-            dcimScanner = dcimScanner,
-            exifStatusReader = exifStatusReader,
-            geoTagCacheDao = AppDatabase.getInstance(context).geoTagCacheDao(),
-            gpsSource = gpsSource,
-            geoInterpolator = GeoInterpolator(maxBracketGap = Duration.ofMinutes(gapMinutes.toLong())),
-            gpsExifWriter = gpsExifWriter,
-            writeLogDao = AppDatabase.getInstance(context).writeLogDao()
-        )
-    }
+    // Delegates to the top-level factory (also used by WriteService) so there's exactly one
+    // copy of the settings/DAO/GPS-source wiring — see its own doc for why.
+    private suspend fun buildOrchestrator(): GeotagOrchestrator? = buildGeotagOrchestrator(context)
 
     companion object {
         private const val SECONDS_PER_HOUR = 3600

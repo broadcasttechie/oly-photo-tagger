@@ -1,5 +1,7 @@
 package com.olyphototagger.app.ui.workflow
 
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -82,6 +84,15 @@ fun HomeScreen(
         uri?.let { viewModel.setRoot(it) }
     }
 
+    // So the write batch's WriteService notification (progress + when it's done) is
+    // actually visible — never required for the batch itself to run or survive
+    // backgrounding, only for the user to see it without opening the app. Requested here,
+    // fired alongside the dry-run tap rather than the actual write-confirm tap on
+    // DryRunScreen, so the OS dialog (if shown at all) is very likely already resolved by
+    // the time the user reviews the preview and taps confirm — not fighting for attention
+    // right when WriteService's first notification actually needs to post.
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     // Errors were previously a Text buried at the bottom of a scrollable column — easy
     // to miss unless already scrolled down. A Snackbar floats above the content and
     // appears immediately regardless of scroll position. Collects viewModel.events (a
@@ -113,7 +124,12 @@ fun HomeScreen(
         onLoadLocalOffset = viewModel::loadLocalOffset,
         onAdjustOffsetHours = viewModel::adjustOffsetHours,
         onSetOffsetSeconds = viewModel::setCameraOffsetSeconds,
-        onDryRun = { scope.launch { if (viewModel.runDryScan()) onNavigateToDryRun() } }
+        onDryRun = {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            scope.launch { if (viewModel.runDryScan()) onNavigateToDryRun() }
+        }
     )
 }
 

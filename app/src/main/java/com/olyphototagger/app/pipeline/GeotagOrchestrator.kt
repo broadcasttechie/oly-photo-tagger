@@ -1,9 +1,13 @@
 package com.olyphototagger.app.pipeline
 
+import android.content.Context
 import androidx.documentfile.provider.DocumentFile
+import com.olyphototagger.app.cache.AppDatabase
 import com.olyphototagger.app.cache.GeoTagCacheDao
 import com.olyphototagger.app.cache.GeoTagCacheEntity
 import com.olyphototagger.app.cache.WriteLogDao
+import com.olyphototagger.app.dawarich.DawarichClient
+import com.olyphototagger.app.dawarich.createDawarichHttpClient
 import com.olyphototagger.app.dcim.CameraFile
 import com.olyphototagger.app.dcim.DcimScanResult
 import com.olyphototagger.app.dcim.DcimScanner
@@ -14,9 +18,14 @@ import com.olyphototagger.app.dcim.identityKey
 import com.olyphototagger.app.exif.PhotoExifStatus
 import com.olyphototagger.app.exif.PhotoExifStatusReader
 import com.olyphototagger.app.exif.toInstant
+import com.olyphototagger.app.exiftool.ExifToolInvoker
 import com.olyphototagger.app.geotag.GeoInterpolator
 import com.olyphototagger.app.geotag.GeoMatch
 import com.olyphototagger.app.geotag.GpsSource
+import com.olyphototagger.app.gpx.GpxTrackSource
+import com.olyphototagger.app.settings.ActiveGpsSourceResolver
+import com.olyphototagger.app.settings.GpsSourceType
+import com.olyphototagger.app.settings.SettingsRepository
 import com.olyphototagger.app.write.GpsExifWriteResult
 import com.olyphototagger.app.write.GpsExifWriter
 import com.olyphototagger.app.write.StrayArtifactIndex
@@ -25,8 +34,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
@@ -354,4 +365,38 @@ class GeotagOrchestrator(
          *  headroom. */
         private const val MAX_CONCURRENT_WRITES = 3
     }
+}
+
+/**
+ * Builds a fully-wired [GeotagOrchestrator] from live settings, or null if no GPS source is
+ * configured yet (see [ActiveGpsSourceResolver]). Constructed fresh on every call, matching
+ * [SettingsRepository]'s own "never cache, never go stale" convention — extracted here (rather
+ * than staying private to [com.olyphototagger.app.ui.workflow.GeotagWorkflowViewModel]) so
+ * [com.olyphototagger.app.service.WriteService] can build the exact same orchestrator the
+ * ViewModel would have, without a second copy of this wiring to drift out of sync.
+ */
+suspend fun buildGeotagOrchestrator(context: Context): GeotagOrchestrator? {
+    val settingsRepository = SettingsRepository(context)
+    val dawarichConfig = settingsRepository.dawarichConfig.first()
+    val activeSource = settingsRepository.activeGpsSource.first()
+    val resolved = ActiveGpsSourceResolver.resolve(activeSource, hasDawarichConfig = dawarichConfig != null)
+        ?: return null
+    val gpsSource: GpsSource = when (resolved) {
+        GpsSourceType.DAWARICH -> DawarichClient(
+            createDawarichHttpClient(),
+            requireNotNull(dawarichConfig).baseUrl,
+            dawarichConfig.apiToken
+        )
+        GpsSourceType.GPX -> GpxTrackSource(AppDatabase.getInstance(context).gpxTrackDao())
+    }
+    val gapMinutes = settingsRepository.gapThresholdMinutes.first()
+    return GeotagOrchestrator(
+        dcimScanner = DcimScanner(context.contentResolver),
+        exifStatusReader = PhotoExifStatusReader(context.contentResolver),
+        geoTagCacheDao = AppDatabase.getInstance(context).geoTagCacheDao(),
+        gpsSource = gpsSource,
+        geoInterpolator = GeoInterpolator(maxBracketGap = Duration.ofMinutes(gapMinutes.toLong())),
+        gpsExifWriter = GpsExifWriter(context.contentResolver, ExifToolInvoker(context), context.cacheDir),
+        writeLogDao = AppDatabase.getInstance(context).writeLogDao()
+    )
 }

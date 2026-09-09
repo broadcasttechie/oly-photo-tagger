@@ -42,6 +42,21 @@ fun AppNavigation(
     // one continuous workflow rather than four independent screens.
     val workflowViewModel: GeotagWorkflowViewModel = viewModel()
 
+    // WriteService (see its own doc) can keep a write batch going even if the OS recreates
+    // this Activity mid-batch — e.g. backgrounded under memory pressure. Without this, a
+    // freshly-composed AppNavigation would still correctly repopulate workflowViewModel's
+    // runProgress/runResults (WriteService.status replays its latest value), but the user
+    // would land on Home with no on-screen sign anything is happening; the notification
+    // would be the only clue. Checked once, here, rather than continuously observed — once
+    // the user is on Progress/Summary, those screens' own state observation takes over.
+    LaunchedEffect(Unit) {
+        val state = workflowViewModel.uiState.value
+        when {
+            state.runProgress != null -> navController.navigate(AppRoute.PROGRESS)
+            state.runResults != null -> navController.navigate(AppRoute.SUMMARY)
+        }
+    }
+
     // A GPX file shared in from another app takes the user straight to where they can
     // confirm importing it, regardless of where they were in the app when it arrived.
     LaunchedEffect(pendingShareUri) {
