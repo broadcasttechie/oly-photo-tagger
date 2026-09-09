@@ -1,6 +1,7 @@
 package com.olyphototagger.app.pipeline
 
 import android.content.Context
+import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.olyphototagger.app.cache.AppDatabase
 import com.olyphototagger.app.cache.GeoTagCacheDao
@@ -72,16 +73,24 @@ class GeotagOrchestrator(
      * @param dateRange restricts which pairs are considered by capture timestamp, so a
      *   whole card doesn't get processed — or even track-fetched for — at once.
      * @param onProgress forwarded straight to [classify]'s own per-pair status resolution —
-     *   see [resolveStatusesConcurrently]'s doc. That's the slow part of a scan (a SAF file
-     *   open per pair, worse over USB); the GPS-track fetch and interpolation below it are
-     *   fast in comparison, so progress isn't tracked past this point.
+     *   see [resolveStatusesConcurrently]'s doc. That's usually the slow part of a scan (a
+     *   SAF file open per pair, worse over USB) — *usually*: the GPS-track fetch just below
+     *   can take much longer than this whole phase when the included pairs' combined time
+     *   span is wide (an unfiltered whole-folder scan spanning weeks/months of untagged
+     *   photos, confirmed for real 2026-09-09 — see [com.olyphototagger.app.dawarich.
+     *   DawarichClient.fetchTrackPoints]'s own doc), which is exactly what [onTrackFetchProgress]
+     *   is for.
+     * @param onTrackFetchProgress cumulative points fetched so far for the track-fetch
+     *   step — see [com.olyphototagger.app.geotag.GpsSource.fetchTrackPoints]'s own doc for
+     *   why it's a running count rather than a completed/total pair.
      */
     suspend fun scanForMatches(
         dcimRoot: DocumentFile,
         assumedOffsetForNaiveTimestamps: ZoneOffset,
         dateRange: ClosedRange<Instant>? = null,
         includeAlreadyTagged: Boolean = false,
-        onProgress: suspend (completed: Int, total: Int) -> Unit = { _, _ -> }
+        onProgress: suspend (completed: Int, total: Int) -> Unit = { _, _ -> },
+        onTrackFetchProgress: suspend (fetchedSoFar: Int) -> Unit = {}
     ): ScanResult {
         val c = classify(dcimRoot, assumedOffsetForNaiveTimestamps, dateRange, includeAlreadyTagged, onProgress)
 
@@ -93,7 +102,8 @@ class GeotagOrchestrator(
         val end = c.included.maxOf { it.second }
         val track = gpsSource.fetchTrackPoints(
             start.minus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES),
-            end.plus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES)
+            end.plus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES),
+            onTrackFetchProgress
         )
 
         val matches = c.included.map { (pair, timestamp) ->
@@ -404,19 +414,8 @@ class GeotagOrchestrator(
  * ViewModel would have, without a second copy of this wiring to drift out of sync.
  */
 suspend fun buildGeotagOrchestrator(context: Context): GeotagOrchestrator? {
+    val gpsSource = buildGpsSource(context) ?: return null
     val settingsRepository = SettingsRepository(context)
-    val dawarichConfig = settingsRepository.dawarichConfig.first()
-    val activeSource = settingsRepository.activeGpsSource.first()
-    val resolved = ActiveGpsSourceResolver.resolve(activeSource, hasDawarichConfig = dawarichConfig != null)
-        ?: return null
-    val gpsSource: GpsSource = when (resolved) {
-        GpsSourceType.DAWARICH -> DawarichClient(
-            createDawarichHttpClient(),
-            requireNotNull(dawarichConfig).baseUrl,
-            dawarichConfig.apiToken
-        )
-        GpsSourceType.GPX -> GpxTrackSource(AppDatabase.getInstance(context).gpxTrackDao())
-    }
     val gapMinutes = settingsRepository.gapThresholdMinutes.first()
     return GeotagOrchestrator(
         dcimScanner = DcimScanner(context.contentResolver),
@@ -427,4 +426,24 @@ suspend fun buildGeotagOrchestrator(context: Context): GeotagOrchestrator? {
         gpsExifWriter = GpsExifWriter(context.contentResolver, ExifToolInvoker(context), context.cacheDir),
         writeLogDao = AppDatabase.getInstance(context).writeLogDao()
     )
+}
+
+/** The [GpsSource] half of [buildGeotagOrchestrator]'s wiring, split out so a caller that only
+ *  needs the GPS source itself — e.g. [com.olyphototagger.app.debug.DebugControlReceiver]'s
+ *  track-fetch timing action — doesn't need a second copy of this resolution logic. */
+suspend fun buildGpsSource(context: Context): GpsSource? {
+    val settingsRepository = SettingsRepository(context)
+    val dawarichConfig = settingsRepository.dawarichConfig.first()
+    val activeSource = settingsRepository.activeGpsSource.first()
+    val resolved = ActiveGpsSourceResolver.resolve(activeSource, hasDawarichConfig = dawarichConfig != null)
+        ?: return null
+    return when (resolved) {
+        GpsSourceType.DAWARICH -> DawarichClient(
+            createDawarichHttpClient(),
+            requireNotNull(dawarichConfig).baseUrl,
+            dawarichConfig.apiToken,
+            log = { message -> Log.d("DawarichClient", message) }
+        )
+        GpsSourceType.GPX -> GpxTrackSource(AppDatabase.getInstance(context).gpxTrackDao())
+    }
 }

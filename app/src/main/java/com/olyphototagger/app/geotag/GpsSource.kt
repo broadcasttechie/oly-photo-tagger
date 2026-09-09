@@ -12,5 +12,21 @@ import java.time.Instant
  * requires that invariant, and no source's own ordering should be trusted blindly.
  */
 interface GpsSource {
-    suspend fun fetchTrackPoints(startInclusive: Instant, endInclusive: Instant): List<TrackPoint>
+    /**
+     * [onProgress] reports cumulative points fetched so far — there's no known total
+     * up front (a paginated source only learns its page count from the *first*
+     * response), so this is a running count, not a completed/total pair. A source
+     * that can't meaningfully report partial progress (e.g. [GpxTrackSource]'s single
+     * DB query) is free to never call it; the default no-op means no caller needs to
+     * special-case that. Exists so a source that can legitimately take a while — a
+     * wide-date-range Dawarich fetch spanning many paginated requests, confirmed for
+     * real (2026-09-09) to take minutes when a scan's implied range spans weeks/months
+     * of history — has a way to show it's actively working rather than looking
+     * indistinguishable from a hang.
+     */
+    suspend fun fetchTrackPoints(
+        startInclusive: Instant,
+        endInclusive: Instant,
+        onProgress: suspend (fetchedSoFar: Int) -> Unit = {}
+    ): List<TrackPoint>
 }

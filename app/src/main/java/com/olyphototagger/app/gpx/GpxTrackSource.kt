@@ -13,7 +13,13 @@ import java.time.Instant
  * stance, even though the DAO's own query already asks for ascending order.
  */
 class GpxTrackSource(private val dao: GpxTrackDao) : GpsSource {
-    override suspend fun fetchTrackPoints(startInclusive: Instant, endInclusive: Instant): List<TrackPoint> =
+    // onProgress unused: a single DB query has no meaningful partial-progress moment to
+    // report — see GpsSource's own doc for why that's fine to just never call.
+    override suspend fun fetchTrackPoints(
+        startInclusive: Instant,
+        endInclusive: Instant,
+        onProgress: suspend (fetchedSoFar: Int) -> Unit
+    ): List<TrackPoint> =
         dao.pointsInRange(startInclusive.epochSecond, endInclusive.epochSecond)
             .map { it.toTrackPoint() }
             .sortedBy { it.time }

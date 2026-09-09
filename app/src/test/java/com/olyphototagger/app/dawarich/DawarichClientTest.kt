@@ -82,6 +82,24 @@ class DawarichClientTest {
     }
 
     @Test
+    fun `onProgress reports cumulative points fetched after each page`() = runTest {
+        val engine = MockEngine { request ->
+            val body = when (request.url.parameters["page"]) {
+                "1" -> """[{"latitude":"1.0","longitude":"1.0","timestamp":100},{"latitude":"1.1","longitude":"1.1","timestamp":101}]"""
+                "2" -> """[{"latitude":"2.0","longitude":"2.0","timestamp":200}]"""
+                else -> "[]"
+            }
+            jsonResponse(this, body, totalPages = 2)
+        }
+        val client = DawarichClient(httpClientWith(engine), "https://dawarich.example", "token")
+        val progressUpdates = mutableListOf<Int>()
+
+        client.fetchTrackPoints(Instant.EPOCH, Instant.now()) { fetchedSoFar -> progressUpdates += fetchedSoFar }
+
+        assertEquals(listOf(2, 3), progressUpdates)
+    }
+
+    @Test
     fun `sorts points ascending regardless of server order`() = runTest {
         val body = """[{"latitude":"2.0","longitude":"2.0","timestamp":200},{"latitude":"1.0","longitude":"1.0","timestamp":100}]"""
         val engine = MockEngine { jsonResponse(this, body) }

@@ -328,9 +328,29 @@ class GeotagWorkflowViewModel(application: Application) : AndroidViewModel(appli
             // folder-pick -> Dry Run normally takes, so it needs live feedback just as much
             // as the optional "check for untagged" button does, especially since this is
             // the phase real-device testing found could run long over USB.
-            val result = orchestrator.scanForMatches(dcimRoot, currentOffset(), currentDateRange()) { completed, total ->
-                _uiState.update { it.copy(scanProgress = ScanProgress(completed, total, startedAt)) }
-            }
+            val result = orchestrator.scanForMatches(
+                dcimRoot,
+                currentOffset(),
+                currentDateRange(),
+                onProgress = { completed, total ->
+                    _uiState.update { it.copy(scanProgress = ScanProgress(completed, total, startedAt)) }
+                },
+                // Fires once per fetched page — see DawarichClient.fetchTrackPoints' own doc
+                // for why this step, not just the per-pair scan above, needed live feedback:
+                // an unfiltered whole-folder scan's implied date range can turn this into a
+                // many-minute fetch with previously no sign it was doing anything at all.
+                // scanProgress is cleared because its own "N of M" no longer applies to this
+                // phase — the indeterminate bar this leaves HomeScreen showing is honest here,
+                // there's no known total point count to show a fraction against.
+                onTrackFetchProgress = { fetchedSoFar ->
+                    _uiState.update {
+                        it.copy(
+                            busyMessage = "Fetching your GPS track… $fetchedSoFar point${if (fetchedSoFar == 1) "" else "s"} so far",
+                            scanProgress = null
+                        )
+                    }
+                }
+            )
             _uiState.update {
                 it.copy(isBusy = false, busyMessage = null, scanProgress = null, scanResult = result, deselectedPairKeys = emptySet())
             }
