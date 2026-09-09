@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.documentfile.provider.DocumentFile
 import com.olyphototagger.app.cache.AppDatabase
 import com.olyphototagger.app.cache.GeoTagCacheDao
-import com.olyphototagger.app.cache.GeoTagCacheEntity
 import com.olyphototagger.app.cache.WriteLogDao
 import com.olyphototagger.app.dawarich.DawarichClient
 import com.olyphototagger.app.dawarich.createDawarichHttpClient
@@ -15,8 +14,10 @@ import com.olyphototagger.app.dcim.PairingResult
 import com.olyphototagger.app.dcim.PhotoPair
 import com.olyphototagger.app.dcim.PhotoPairer
 import com.olyphototagger.app.dcim.identityKey
+import com.olyphototagger.app.exif.GeoTagCacheMapper
 import com.olyphototagger.app.exif.PhotoExifStatus
 import com.olyphototagger.app.exif.PhotoExifStatusReader
+import com.olyphototagger.app.exif.toCaptureTimestamp
 import com.olyphototagger.app.exif.toInstant
 import com.olyphototagger.app.exiftool.ExifToolInvoker
 import com.olyphototagger.app.geotag.GeoInterpolator
@@ -121,7 +122,9 @@ class GeotagOrchestrator(
             noTimestamp = c.excluded.count { it.reason == ExcludeReason.NO_TIMESTAMP },
             outsideDateRange = c.excluded.count { it.reason == ExcludeReason.OUTSIDE_DATE_RANGE },
             ignoredFiles = c.pairing.ignored.size,
-            conflicts = c.pairing.conflicts.size
+            conflicts = c.pairing.conflicts.size,
+            cacheHits = c.cacheStats.hits.get(),
+            cacheMisses = c.cacheStats.misses.get()
         )
     }
 
@@ -129,8 +132,19 @@ class GeotagOrchestrator(
         val scan: DcimScanResult,
         val pairing: PairingResult,
         val included: List<Pair<PhotoPair, Instant>>,
-        val excluded: List<ExcludedPair>
+        val excluded: List<ExcludedPair>,
+        val cacheStats: CacheStats
     )
+
+    /** Per-scan cache-hit/miss tally — see [resolveFileStatus]. Not surfaced in the real UI
+     *  (only [PreScanSummary]'s two debug-only fields read it); exists so
+     *  [com.olyphototagger.app.debug.DebugControlReceiver]'s SCAN action can log the geotag
+     *  cache's actual effect on a rescan directly, rather than that being something only
+     *  inferable from wall-clock time. */
+    private class CacheStats {
+        val hits = AtomicInteger(0)
+        val misses = AtomicInteger(0)
+    }
 
     private suspend fun classify(
         dcimRoot: DocumentFile,
@@ -141,8 +155,9 @@ class GeotagOrchestrator(
     ): Classification {
         val scan = dcimScanner.scan(dcimRoot)
         val pairing = PhotoPairer.pair(scan.files)
+        val cacheStats = CacheStats()
 
-        val statuses = resolveStatusesConcurrently(pairing.pairs, scan, assumedOffsetForNaiveTimestamps, onProgress)
+        val statuses = resolveStatusesConcurrently(pairing.pairs, scan, assumedOffsetForNaiveTimestamps, onProgress, cacheStats)
 
         val included = mutableListOf<Pair<PhotoPair, Instant>>()
         val excluded = mutableListOf<ExcludedPair>()
@@ -156,7 +171,7 @@ class GeotagOrchestrator(
             }
         }
 
-        return Classification(scan, pairing, included, excluded)
+        return Classification(scan, pairing, included, excluded, cacheStats)
     }
 
     /**
@@ -179,13 +194,14 @@ class GeotagOrchestrator(
         pairs: List<PhotoPair>,
         scan: DcimScanResult,
         assumedOffsetForNaiveTimestamps: ZoneOffset,
-        onProgress: suspend (completed: Int, total: Int) -> Unit
+        onProgress: suspend (completed: Int, total: Int) -> Unit,
+        cacheStats: CacheStats
     ): List<Pair<PhotoPair, PairGeoStatus>> = coroutineScope {
         val semaphore = Semaphore(MAX_CONCURRENT_STATUS_CHECKS)
         val completedCount = AtomicInteger(0)
         pairs.map { pair ->
             async {
-                val status = semaphore.withPermit { resolvePairStatus(pair, scan, assumedOffsetForNaiveTimestamps) }
+                val status = semaphore.withPermit { resolvePairStatus(pair, scan, assumedOffsetForNaiveTimestamps, cacheStats) }
                 onProgress(completedCount.incrementAndGet(), pairs.size)
                 pair to status
             }
@@ -316,38 +332,50 @@ class GeotagOrchestrator(
 
     /**
      * Resolves a pair's combined tagged-status + timestamp. Checks the geotag cache
-     * first — a file the cache already knows is tagged is never opened at all. JPEG is
+     * first — a file the cache already has *any* status for is never reopened. JPEG is
      * checked before RAW: cheaper to open, and it short-circuits the RAW check entirely
      * whenever the JPEG side alone already settles "this pair is tagged."
      */
     private suspend fun resolvePairStatus(
         pair: PhotoPair,
         scan: DcimScanResult,
-        assumedOffsetForNaiveTimestamps: ZoneOffset
+        assumedOffsetForNaiveTimestamps: ZoneOffset,
+        cacheStats: CacheStats
     ): PairGeoStatus {
-        val jpegStatus = pair.jpeg?.let { resolveFileStatus(it, scan) }
+        val jpegStatus = pair.jpeg?.let { resolveFileStatus(it, scan, cacheStats) }
         if (jpegStatus?.hasGeoTag == true) {
             return PairGeoStatus(hasExistingGeoTag = true, timestamp = null)
         }
 
-        val rawStatus = pair.raw?.let { resolveFileStatus(it, scan) }
+        val rawStatus = pair.raw?.let { resolveFileStatus(it, scan, cacheStats) }
         val hasGeoTag = jpegStatus?.hasGeoTag == true || rawStatus?.hasGeoTag == true
         val timestamp = (jpegStatus?.captureTimestamp ?: rawStatus?.captureTimestamp)
             ?.toInstant(assumedOffsetForNaiveTimestamps)
         return PairGeoStatus(hasGeoTag, timestamp)
     }
 
-    private suspend fun resolveFileStatus(file: CameraFile, scan: DcimScanResult): PhotoExifStatus? {
+    /**
+     * A cache hit here means *any* previously-recorded status for this exact file — not
+     * just "known tagged" — skips reopening it. Originally this only short-circuited the
+     * tagged case, so a still-untagged file (most of a fresh card, every single rescan)
+     * paid the full open-and-parse cost again every time; measured on-device (2026-09-09,
+     * a real 1000+ photo card) as the actual reason a *re*-scan of the same card was still
+     * slow even though nothing on it had changed. [identityKey] already guarantees a write
+     * (which changes size/mtime) invalidates the entry naturally — see its own doc — so
+     * reusing a hit unconditionally here is safe, not just faster.
+     */
+    private suspend fun resolveFileStatus(file: CameraFile, scan: DcimScanResult, cacheStats: CacheStats): PhotoExifStatus? {
         val key = file.identityKey()
         val cached = geoTagCacheDao.get(key)
-        if (cached?.hasGeoTag == true) {
-            // Known tagged from a previous scan — skip opening the file entirely.
-            return PhotoExifStatus(hasGeoTag = true, captureTimestamp = null)
+        if (cached != null) {
+            cacheStats.hits.incrementAndGet()
+            return PhotoExifStatus(hasGeoTag = cached.hasGeoTag, captureTimestamp = cached.toCaptureTimestamp())
         }
+        cacheStats.misses.incrementAndGet()
 
         val documentFile = scan.resolve(file) ?: return null
         val status = exifStatusReader.read(documentFile.uri) ?: return null
-        geoTagCacheDao.upsert(GeoTagCacheEntity(key, status.hasGeoTag, Instant.now().toEpochMilli()))
+        geoTagCacheDao.upsert(GeoTagCacheMapper.from(key, status, Instant.now()))
         return status
     }
 

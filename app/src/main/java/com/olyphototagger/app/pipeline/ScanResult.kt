@@ -36,12 +36,19 @@ data class PairWriteResult(
     val rawResult: GpsExifWriteResult?
 )
 
-/** Output of [GeotagOrchestrator.preScan] — counts only, no network call, no writes. */
+/** Output of [GeotagOrchestrator.preScan] — counts only, no network call, no writes.
+ *  [cacheHits]/[cacheMisses] aren't shown anywhere in the real UI (defaulted so
+ *  [com.olyphototagger.app.ui.PreviewFixtures] doesn't need updating) — they exist for
+ *  [com.olyphototagger.app.debug.DebugControlReceiver]'s SCAN action to log, so the geotag
+ *  cache's effect on a rescan is directly measurable rather than inferred from wall-clock
+ *  time alone. */
 data class PreScanSummary(
     val needsTagging: Int,
     val alreadyTagged: Int,
     val noTimestamp: Int,
     val outsideDateRange: Int,
     val ignoredFiles: Int,
-    val conflicts: Int
+    val conflicts: Int,
+    val cacheHits: Int = 0,
+    val cacheMisses: Int = 0
 )

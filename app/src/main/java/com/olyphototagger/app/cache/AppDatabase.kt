@@ -12,9 +12,12 @@ import androidx.room.RoomDatabase
  *
  * version 2 (was 1): added the gpx_imported_file/gpx_track_point tables. version 3 (was 2):
  * added the write_log table (see [WriteLogEntity]) — the persistent audit trail
- * GpsExifWriteResult's doc always said was coming. No Migration is written for either
- * bump — fallbackToDestructiveMigration() is the honest expression of this project's
- * current "pre-release, no real user data to preserve yet" stance, rather than an
+ * GpsExifWriteResult's doc always said was coming. version 4 (was 3): geotag_cache gained
+ * captureTimestampExactEpochMillis/captureTimestampNaiveLocal — the cache already skipped
+ * re-opening a file once known *tagged*, but had nowhere to remember an as-yet-untagged
+ * file's status, which on a fresh card is most of it, every single rescan. No Migration is
+ * written for any bump — fallbackToDestructiveMigration() is the honest expression of this
+ * project's current "pre-release, no real user data to preserve yet" stance, rather than an
  * unhandled crash on any device that already has an older database. Everything else in
  * this database is a rebuildable cache/import, never the original photos — write_log is
  * the first table where that's no longer quite true (losing it loses history, not just a
@@ -27,7 +30,7 @@ import androidx.room.RoomDatabase
         GpxTrackPointEntity::class,
         WriteLogEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
