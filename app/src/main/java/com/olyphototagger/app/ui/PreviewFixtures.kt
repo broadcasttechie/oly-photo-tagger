@@ -101,7 +101,8 @@ internal object PreviewFixtures {
         completed = 3,
         total = 5,
         currentAction = "Wrote P8080744",
-        startedAt = Instant.now().minusSeconds(12)
+        startedAt = Instant.now().minusSeconds(12),
+        currentPair = matched.first().pair
     )
 
     val scanProgress = ScanProgress(

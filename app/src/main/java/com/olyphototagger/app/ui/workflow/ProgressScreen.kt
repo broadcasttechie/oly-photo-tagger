@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.olyphototagger.app.pipeline.ScanResult
 import com.olyphototagger.app.ui.PreviewFixtures
 import com.olyphototagger.app.ui.theme.OlyPhotoTaggerTheme
 
@@ -53,13 +54,18 @@ fun ProgressScreen(
         viewModel.events.collect { message -> snackbarHostState.showSnackbar(message) }
     }
 
-    ProgressScreenContent(runProgress = uiState.runProgress, snackbarHostState = snackbarHostState)
+    ProgressScreenContent(
+        runProgress = uiState.runProgress,
+        scanResult = uiState.scanResult,
+        snackbarHostState = snackbarHostState
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ProgressScreenContent(
     runProgress: RunProgress?,
+    scanResult: ScanResult?,
     snackbarHostState: SnackbarHostState
 ) {
     // The write itself survives navigation regardless (it runs in the ViewModel's own
@@ -90,6 +96,15 @@ private fun ProgressScreenContent(
             } else {
                 val fraction = if (progress.total == 0) 0f else progress.completed / progress.total.toFloat()
                 LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                // currentPair is only null for the very first "Starting…" progress, before
+                // any pair has completed — see RunProgress's own doc. Loaded through the
+                // same Coil ImageLoader as the dry-run list, so a photo already reviewed
+                // there is normally already cached by the time its write shows up here —
+                // no new decode, no delay, same as that screen's own thumbnails.
+                val pair = progress.currentPair
+                if (scanResult != null && pair != null) {
+                    PhotoThumbnail(scanResult, pair, modifier = Modifier.padding(top = 16.dp), size = 88.dp)
+                }
                 Text(
                     "${progress.completed} of ${progress.total}",
                     style = MaterialTheme.typography.titleMedium,
@@ -127,7 +142,11 @@ private fun ProgressScreenContent(
 @Composable
 private fun ProgressScreenPreview() {
     OlyPhotoTaggerTheme(dynamicColor = false) {
-        ProgressScreenContent(runProgress = PreviewFixtures.runProgress, snackbarHostState = remember { SnackbarHostState() })
+        ProgressScreenContent(
+            runProgress = PreviewFixtures.runProgress,
+            scanResult = PreviewFixtures.scanResult,
+            snackbarHostState = remember { SnackbarHostState() }
+        )
     }
 }
 
@@ -135,6 +154,6 @@ private fun ProgressScreenPreview() {
 @Composable
 private fun ProgressScreenStartingPreview() {
     OlyPhotoTaggerTheme(dynamicColor = false) {
-        ProgressScreenContent(runProgress = null, snackbarHostState = remember { SnackbarHostState() })
+        ProgressScreenContent(runProgress = null, scanResult = null, snackbarHostState = remember { SnackbarHostState() })
     }
 }

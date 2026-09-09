@@ -116,7 +116,7 @@ class WriteService : Service() {
             // "0 of 0" finished summary rather than the impossible "no orchestrator to run."
             val orchestrator = buildGeotagOrchestrator(applicationContext) ?: return
             results = orchestrator.applyMatches(request.scanResult, request.matches) { result, completed, total ->
-                val progress = RunProgress(completed, total, "Wrote ${result.pair.baseName}", request.startedAt)
+                val progress = RunProgress(completed, total, "Wrote ${result.pair.baseName}", request.startedAt, result.pair)
                 _status.value = Status.Running(progress)
                 notify(buildProgressNotification(progress))
             }

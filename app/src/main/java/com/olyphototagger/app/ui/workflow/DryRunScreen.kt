@@ -1,7 +1,6 @@
 package com.olyphototagger.app.ui.workflow
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,11 +11,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
@@ -37,7 +34,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -277,7 +273,7 @@ private fun MatchedRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Checkbox(checked = selected, onCheckedChange = null)
-            PhotoThumbnail(scanResult, match.pair)
+            PhotoThumbnail(scanResult, match.pair, modifier = Modifier.padding(end = 12.dp))
             Column(Modifier.padding(vertical = 2.dp).weight(1f)) {
                 Text(match.pair.baseName, style = MaterialTheme.typography.bodyMedium)
                 // Coordinates show immediately; rememberAddress swaps in a real address
@@ -308,7 +304,7 @@ private fun MatchedRow(
 @Composable
 private fun SkippedRow(scanResult: ScanResult, match: ProposedMatch, reason: String) {
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        PhotoThumbnail(scanResult, match.pair)
+        PhotoThumbnail(scanResult, match.pair, modifier = Modifier.padding(end = 12.dp))
         Column {
             Text(match.pair.baseName, style = MaterialTheme.typography.bodyMedium)
             Text(
@@ -318,34 +314,6 @@ private fun SkippedRow(scanResult: ScanResult, match: ProposedMatch, reason: Str
             )
         }
     }
-}
-
-/** The pair's JPEG, downsampled by Coil — a RAW file alone (Olympus .ORF) isn't a format
- *  Android's own decoders understand, so a JPEG-less pair falls back to a plain icon
- *  rather than asking Coil to load something that can only fail. */
-@Composable
-private fun PhotoThumbnail(scanResult: ScanResult, pair: PhotoPair, modifier: Modifier = Modifier) {
-    val size = Modifier.size(40.dp).padding(end = 12.dp)
-    val jpeg = pair.jpeg
-    if (jpeg == null) {
-        Box(size.then(modifier), contentAlignment = Alignment.Center) {
-            Icon(
-                Icons.Default.PhotoCamera,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-        return
-    }
-    val context = LocalContext.current
-    AsyncImage(
-        model = remember(jpeg) { scanResult.resolve(jpeg)?.uri },
-        contentDescription = null,
-        imageLoader = ThumbnailImageLoader.get(context),
-        contentScale = ContentScale.Crop,
-        modifier = size.then(modifier).clip(RoundedCornerShape(4.dp))
-    )
 }
 
 /** A single static OpenStreetMap tile centered on [latitude]/[longitude] — see

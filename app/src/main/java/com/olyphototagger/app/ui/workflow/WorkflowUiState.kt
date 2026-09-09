@@ -16,8 +16,16 @@ import java.time.Instant
  *  "the current one" wouldn't mean anything once more than one is in flight at once.
  *  [startedAt] is when the whole run began, carried unchanged on every update — an ETA
  *  needs the real elapsed time since the batch started, not just since the screen showing
- *  it was opened (the write survives navigation, see [GeotagWorkflowViewModel.startRun]). */
-data class RunProgress(val completed: Int, val total: Int, val currentAction: String, val startedAt: Instant)
+ *  it was opened (the write survives navigation, see [GeotagWorkflowViewModel.startRun]).
+ *  [currentPair] is that same pair, for [PhotoThumbnail] to render — null only for the
+ *  very first, "Starting…" progress WriteService posts before any pair has completed. */
+data class RunProgress(
+    val completed: Int,
+    val total: Int,
+    val currentAction: String,
+    val startedAt: Instant,
+    val currentPair: PhotoPair? = null
+)
 
 /** Live progress for [GeotagWorkflowViewModel.runPreScan]'s per-pair status checks — the
  *  slow part of a prescan (see [GeotagOrchestrator.preScan]'s own doc). Null until the
