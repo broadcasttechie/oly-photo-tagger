@@ -8,12 +8,15 @@ import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.olyphototagger.app.cache.AppDatabase
 import com.olyphototagger.app.pipeline.buildGeotagOrchestrator
+import com.olyphototagger.app.pipeline.buildGpsSource
 import com.olyphototagger.app.settings.SettingsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.ZoneOffset
 
 /**
@@ -35,7 +38,10 @@ import java.time.ZoneOffset
  *     -n com.olyphototagger.app/com.olyphototagger.app.debug.DebugControlReceiver
  * adb shell am broadcast -a com.olyphototagger.app.debug.CLEAR_CACHE \
  *     -n com.olyphototagger.app/com.olyphototagger.app.debug.DebugControlReceiver
- * adb logcat -s DebugControl:*
+ * adb shell am broadcast -a com.olyphototagger.app.debug.FETCH_TRACK \
+ *     -n com.olyphototagger.app/com.olyphototagger.app.debug.DebugControlReceiver \
+ *     --es start 2026-07-18T08:46:48Z --es end 2026-09-06T13:16:35Z
+ * adb logcat -s DebugControl:* DawarichClient:*
  * ```
  */
 class DebugControlReceiver : BroadcastReceiver() {
@@ -57,10 +63,13 @@ class DebugControlReceiver : BroadcastReceiver() {
                 when (action) {
                     ACTION_SCAN -> runScan(appContext)
                     ACTION_CLEAR_CACHE -> clearCache(appContext)
+                    ACTION_FETCH_TRACK -> fetchTrack(appContext, intent)
                     else -> Log.w(TAG, "Unknown action: $action")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                Log.e(TAG, "$action failed", e)
+                Log.e(TAG, "$action failed: ${e.javaClass.name}: ${e.message}", e)
             }
         }
     }
@@ -116,10 +125,42 @@ class DebugControlReceiver : BroadcastReceiver() {
         Log.i(TAG, "CLEAR_CACHE done — geotag_cache emptied")
     }
 
+    /** Times a single [com.olyphototagger.app.dawarich.DawarichClient.fetchTrackPoints] call
+     *  in isolation, over a caller-supplied `[start, end]` range — added specifically to
+     *  answer "is the GPS-track fetch itself slow, or is something else going on" without
+     *  going through the real Dry Run UI, which for a genuinely wide range risks the exact
+     *  ANR this receiver's own SCAN action already hit once (see the class doc). `--es start`/
+     *  `--es end` take ISO-8601 instants (`2026-07-18T08:46:48Z`); per-page detail logs under
+     *  the `DawarichClient` tag (see that class). */
+    private suspend fun fetchTrack(context: Context, intent: Intent) {
+        val startString = intent.getStringExtra("start")
+        val endString = intent.getStringExtra("end")
+        if (startString == null || endString == null) {
+            Log.w(TAG, "FETCH_TRACK: pass --es start <ISO-8601> --es end <ISO-8601>")
+            return
+        }
+        val start = runCatching { Instant.parse(startString) }.getOrNull()
+        val end = runCatching { Instant.parse(endString) }.getOrNull()
+        if (start == null || end == null) {
+            Log.w(TAG, "FETCH_TRACK: couldn't parse start=$startString end=$endString as ISO-8601 instants")
+            return
+        }
+        val gpsSource = buildGpsSource(context)
+        if (gpsSource == null) {
+            Log.w(TAG, "FETCH_TRACK: no GPS source configured — set one up via the app first.")
+            return
+        }
+        val startedAtMs = System.currentTimeMillis()
+        val points = gpsSource.fetchTrackPoints(start, end)
+        val elapsedMs = System.currentTimeMillis() - startedAtMs
+        Log.i(TAG, "FETCH_TRACK done in ${elapsedMs}ms — ${points.size} points for [$start, $end]")
+    }
+
     companion object {
         private const val TAG = "DebugControl"
         private const val ACTION_SCAN = "com.olyphototagger.app.debug.SCAN"
         private const val ACTION_CLEAR_CACHE = "com.olyphototagger.app.debug.CLEAR_CACHE"
+        private const val ACTION_FETCH_TRACK = "com.olyphototagger.app.debug.FETCH_TRACK"
 
         // See onReceive()'s doc for why this exists instead of goAsync(). SupervisorJob so
         // one failed action can never cancel a later, unrelated one sharing this scope.
