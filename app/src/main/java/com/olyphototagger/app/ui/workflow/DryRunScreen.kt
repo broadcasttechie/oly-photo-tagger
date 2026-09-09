@@ -1,16 +1,22 @@
 package com.olyphototagger.app.ui.workflow
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
@@ -25,15 +31,24 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
 import com.olyphototagger.app.dcim.PhotoPair
 import com.olyphototagger.app.dcim.identityKey
 import com.olyphototagger.app.geotag.GeoMatch
+import com.olyphototagger.app.image.ThumbnailImageLoader
+import com.olyphototagger.app.image.osmTileRequest
 import com.olyphototagger.app.pipeline.ExcludeReason
 import com.olyphototagger.app.pipeline.ExcludedPair
 import com.olyphototagger.app.pipeline.ProposedMatch
@@ -58,12 +73,21 @@ fun DryRunScreen(
     onConfirmRun: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    // Purely local, ephemeral display state — which rows have their map preview open —
+    // not part of WorkflowUiState: nothing downstream needs it to survive navigating away
+    // and back, unlike deselectedPairKeys which must (it feeds the actual write batch).
+    var mapExpandedPairKeys by remember { mutableStateOf(emptySet<String>()) }
     DryRunScreenContent(
         scanResult = uiState.scanResult,
         deselectedPairKeys = uiState.deselectedPairKeys,
+        mapExpandedPairKeys = mapExpandedPairKeys,
         onBack = onBack,
         onToggleSelection = viewModel::toggleMatchSelection,
         onSetAllSelected = viewModel::setAllMatchesSelected,
+        onToggleMapExpanded = { pair ->
+            val key = pair.stableKey()
+            mapExpandedPairKeys = if (key in mapExpandedPairKeys) mapExpandedPairKeys - key else mapExpandedPairKeys + key
+        },
         onConfirmRun = { viewModel.startRun(); onConfirmRun() }
     )
 }
@@ -73,9 +97,11 @@ fun DryRunScreen(
 private fun DryRunScreenContent(
     scanResult: ScanResult?,
     deselectedPairKeys: Set<String>,
+    mapExpandedPairKeys: Set<String>,
     onBack: () -> Unit,
     onToggleSelection: (PhotoPair) -> Unit,
     onSetAllSelected: (Boolean) -> Unit,
+    onToggleMapExpanded: (PhotoPair) -> Unit,
     onConfirmRun: () -> Unit
 ) {
     Scaffold(
@@ -133,17 +159,28 @@ private fun DryRunScreenContent(
                         HorizontalDivider()
                     }
                     items(willWrite, key = { it.pair.stableKey() }) { match ->
-                        val selected = match.pair.stableKey() !in deselectedPairKeys
-                        MatchedRow(match, selected) { onToggleSelection(match.pair) }
+                        val key = match.pair.stableKey()
+                        MatchedRow(
+                            scanResult = scanResult,
+                            match = match,
+                            selected = key !in deselectedPairKeys,
+                            mapExpanded = key in mapExpandedPairKeys,
+                            onToggle = { onToggleSelection(match.pair) },
+                            onToggleMapExpanded = { onToggleMapExpanded(match.pair) }
+                        )
                     }
                 }
                 if (gapTooLarge.isNotEmpty()) {
                     item { SectionHeader("Skipped — GPS gap too large (${gapTooLarge.size})") }
-                    items(gapTooLarge, key = { it.pair.stableKey() }) { SkippedRow(it, "GPS points too far apart in time") }
+                    items(gapTooLarge, key = { it.pair.stableKey() }) {
+                        SkippedRow(scanResult, it, "GPS points too far apart in time")
+                    }
                 }
                 if (outsideTrack.isNotEmpty()) {
                     item { SectionHeader("Skipped — outside GPS track (${outsideTrack.size})") }
-                    items(outsideTrack, key = { it.pair.stableKey() }) { SkippedRow(it, "No nearby GPS data") }
+                    items(outsideTrack, key = { it.pair.stableKey() }) {
+                        SkippedRow(scanResult, it, "No nearby GPS data")
+                    }
                 }
                 if (scanResult.excluded.isNotEmpty()) {
                     item { SectionHeader("Not considered (${scanResult.excluded.size})") }
@@ -215,37 +252,109 @@ private fun SectionHeader(text: String) {
 // Two lines per row, not three — coordinates moved onto the same line as the capture
 // time rather than a line of their own. A dry-run batch can run into the hundreds or
 // thousands of rows (see the 1000-photo stress test), so this row height compounds a
-// lot more than it looks like it should from any one row in isolation.
+// lot more than it looks like it should from any one row in isolation. The thumbnail
+// and map preview below don't fight that: the thumbnail is a fixed 40dp regardless of
+// list size (Coil decodes it downsampled and only for on-screen rows, same LazyColumn
+// story as everything else here), and the map is opt-in per row, not shown by default.
 @Composable
-private fun MatchedRow(match: ProposedMatch, selected: Boolean, onToggle: () -> Unit) {
+private fun MatchedRow(
+    scanResult: ScanResult,
+    match: ProposedMatch,
+    selected: Boolean,
+    mapExpanded: Boolean,
+    onToggle: () -> Unit,
+    onToggleMapExpanded: () -> Unit
+) {
     val geo = match.geoMatch as GeoMatch.Matched
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .toggleable(value = selected, onValueChange = { onToggle() }, role = Role.Checkbox)
-            .padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Checkbox(checked = selected, onCheckedChange = null)
-        Column(Modifier.padding(vertical = 2.dp)) {
-            Text(match.pair.baseName, style = MaterialTheme.typography.bodyMedium)
-            Text(
-                "${formatCaptureTime(match.timestamp)} · %.4f, %.4f".format(geo.latitude, geo.longitude),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(value = selected, onValueChange = { onToggle() }, role = Role.Checkbox)
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(checked = selected, onCheckedChange = null)
+            PhotoThumbnail(scanResult, match.pair)
+            Column(Modifier.padding(vertical = 2.dp).weight(1f)) {
+                Text(match.pair.baseName, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "${formatCaptureTime(match.timestamp)} · %.4f, %.4f".format(geo.latitude, geo.longitude),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = onToggleMapExpanded, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    Icons.Default.Map,
+                    contentDescription = if (mapExpanded) "Hide map" else "Show on map",
+                    tint = if (mapExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        if (mapExpanded) {
+            MapPreview(geo.latitude, geo.longitude)
         }
     }
 }
 
 @Composable
-private fun SkippedRow(match: ProposedMatch, reason: String) {
-    Column(Modifier.padding(vertical = 2.dp)) {
-        Text(match.pair.baseName, style = MaterialTheme.typography.bodyMedium)
-        Text(
-            "${formatCaptureTime(match.timestamp)} · $reason",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error
+private fun SkippedRow(scanResult: ScanResult, match: ProposedMatch, reason: String) {
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        PhotoThumbnail(scanResult, match.pair)
+        Column {
+            Text(match.pair.baseName, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "${formatCaptureTime(match.timestamp)} · $reason",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+    }
+}
+
+/** The pair's JPEG, downsampled by Coil — a RAW file alone (Olympus .ORF) isn't a format
+ *  Android's own decoders understand, so a JPEG-less pair falls back to a plain icon
+ *  rather than asking Coil to load something that can only fail. */
+@Composable
+private fun PhotoThumbnail(scanResult: ScanResult, pair: PhotoPair, modifier: Modifier = Modifier) {
+    val size = Modifier.size(40.dp).padding(end = 12.dp)
+    val jpeg = pair.jpeg
+    if (jpeg == null) {
+        Box(size.then(modifier), contentAlignment = Alignment.Center) {
+            Icon(
+                Icons.Default.PhotoCamera,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        return
+    }
+    val context = LocalContext.current
+    AsyncImage(
+        model = remember(jpeg) { scanResult.resolve(jpeg)?.uri },
+        contentDescription = null,
+        imageLoader = ThumbnailImageLoader.get(context),
+        contentScale = ContentScale.Crop,
+        modifier = size.then(modifier).clip(RoundedCornerShape(4.dp))
+    )
+}
+
+/** A single static OpenStreetMap tile centered on [latitude]/[longitude] — see
+ *  [com.olyphototagger.app.image.osmTileUrl]'s own doc for why this is only ever loaded
+ *  on an explicit per-row tap, never automatically for every row in what can be a
+ *  thousand-row list. */
+@Composable
+private fun MapPreview(latitude: Double, longitude: Double) {
+    val context = LocalContext.current
+    Card(modifier = Modifier.fillMaxWidth().padding(start = 40.dp, bottom = 8.dp)) {
+        AsyncImage(
+            model = remember(latitude, longitude) { osmTileRequest(context, latitude, longitude) },
+            imageLoader = ThumbnailImageLoader.get(context),
+            contentDescription = "Map showing where this photo was taken",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxWidth().height(160.dp)
         )
     }
 }
@@ -275,7 +384,8 @@ private fun DryRunScreenPreview() {
         DryRunScreenContent(
             scanResult = PreviewFixtures.scanResult,
             deselectedPairKeys = emptySet(),
-            onBack = {}, onToggleSelection = {}, onSetAllSelected = {}, onConfirmRun = {}
+            mapExpandedPairKeys = emptySet(),
+            onBack = {}, onToggleSelection = {}, onSetAllSelected = {}, onToggleMapExpanded = {}, onConfirmRun = {}
         )
     }
 }
@@ -287,7 +397,8 @@ private fun DryRunScreenPartiallySelectedPreview() {
         DryRunScreenContent(
             scanResult = PreviewFixtures.scanResult,
             deselectedPairKeys = setOf(PreviewFixtures.matched.first().pair.stableKey()),
-            onBack = {}, onToggleSelection = {}, onSetAllSelected = {}, onConfirmRun = {}
+            mapExpandedPairKeys = emptySet(),
+            onBack = {}, onToggleSelection = {}, onSetAllSelected = {}, onToggleMapExpanded = {}, onConfirmRun = {}
         )
     }
 }
@@ -299,7 +410,8 @@ private fun DryRunScreenEmptyPreview() {
         DryRunScreenContent(
             scanResult = null,
             deselectedPairKeys = emptySet(),
-            onBack = {}, onToggleSelection = {}, onSetAllSelected = {}, onConfirmRun = {}
+            mapExpandedPairKeys = emptySet(),
+            onBack = {}, onToggleSelection = {}, onSetAllSelected = {}, onToggleMapExpanded = {}, onConfirmRun = {}
         )
     }
 }

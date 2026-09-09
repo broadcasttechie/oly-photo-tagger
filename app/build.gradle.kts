@@ -148,6 +148,15 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
+    // Local photo thumbnails (DryRunScreen) and the static OSM map-tile preview
+    // (MatchedRow's expandable "show map" — see its own doc) — both content:// SAF URIs
+    // and https:// tile URLs load through the same pipeline this way. coil-network-okhttp
+    // rather than coil-network-ktor3: OkHttp is already pulled in transitively via
+    // ktor-client-okhttp, so this doesn't add a second HTTP stack.
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.core)
+    implementation(libs.coil.network.okhttp)
+
     testImplementation(libs.junit)
     testImplementation(libs.ktor.client.mock)
     testImplementation(libs.kotlinx.coroutines.test)
