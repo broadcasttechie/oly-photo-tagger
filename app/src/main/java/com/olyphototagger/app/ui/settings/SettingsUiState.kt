@@ -7,6 +7,7 @@ package com.olyphototagger.app.ui.settings
  */
 data class SettingsUiState(
     val gapThresholdMinutes: String = "",
+    val dawarichCacheRecentHours: String = "",
     val isSaving: Boolean = false,
     val saveMessage: String? = null
 )

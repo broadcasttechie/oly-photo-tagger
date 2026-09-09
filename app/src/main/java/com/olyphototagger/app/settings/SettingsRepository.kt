@@ -26,6 +26,7 @@ class SettingsRepository(
         val DAWARICH_API_TOKEN_CIPHERTEXT = stringPreferencesKey("dawarich_api_token_ciphertext")
         val DAWARICH_API_TOKEN_IV = stringPreferencesKey("dawarich_api_token_iv")
         val GAP_THRESHOLD_MINUTES = intPreferencesKey("gap_threshold_minutes")
+        val DAWARICH_CACHE_RECENT_HOURS = intPreferencesKey("dawarich_cache_recent_hours")
         val LAST_CAMERA_OFFSET_SECONDS = intPreferencesKey("last_camera_offset_seconds")
         val LAST_DCIM_ROOT_URI = stringPreferencesKey("last_dcim_root_uri")
         val ACTIVE_GPS_SOURCE = stringPreferencesKey("active_gps_source")
@@ -69,6 +70,24 @@ class SettingsRepository(
     suspend fun saveGapThresholdMinutes(minutes: Int) {
         require(minutes > 0) { "Gap threshold must be positive, was $minutes" }
         context.settingsDataStore.edit { prefs -> prefs[Keys.GAP_THRESHOLD_MINUTES] = minutes }
+    }
+
+    /**
+     * How recent a fetched range has to *not* be before [com.olyphototagger.app.dawarich.
+     * CachingDawarichSource] will trust an empty result as final and cache it. Dawarich
+     * itself can lag behind real time — a tracker with a sync delay, spotty connectivity —
+     * so "no points yet for the last couple of hours" isn't the same claim as "no points
+     * for a date three months ago"; only the second is safe to cache as a settled fact.
+     * Real points that *do* come back are cached either way, recent or not — they're never
+     * wrong, only an empty range's completeness marker is the risky part.
+     */
+    val dawarichCacheRecentHours: Flow<Int> = context.settingsDataStore.data.map { prefs ->
+        prefs[Keys.DAWARICH_CACHE_RECENT_HOURS] ?: DEFAULT_DAWARICH_CACHE_RECENT_HOURS
+    }
+
+    suspend fun saveDawarichCacheRecentHours(hours: Int) {
+        require(hours >= 0) { "Recent-hours safeguard can't be negative, was $hours" }
+        context.settingsDataStore.edit { prefs -> prefs[Keys.DAWARICH_CACHE_RECENT_HOURS] = hours }
     }
 
     /**
@@ -125,5 +144,11 @@ class SettingsRepository(
 
     companion object {
         const val DEFAULT_GAP_THRESHOLD_MINUTES = 5
+
+        // A conservative default, not a measured one — this project has no data on any
+        // particular Dawarich tracker's real sync lag. 24h comfortably covers "synced once
+        // overnight" as well as shorter delays; users who know their setup syncs faster (or
+        // slower) can adjust it in Settings.
+        const val DEFAULT_DAWARICH_CACHE_RECENT_HOURS = 24
     }
 }

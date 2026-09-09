@@ -15,22 +15,28 @@ import androidx.room.RoomDatabase
  * GpsExifWriteResult's doc always said was coming. version 4 (was 3): geotag_cache gained
  * captureTimestampExactEpochMillis/captureTimestampNaiveLocal — the cache already skipped
  * re-opening a file once known *tagged*, but had nowhere to remember an as-yet-untagged
- * file's status, which on a fresh card is most of it, every single rescan. No Migration is
- * written for any bump — fallbackToDestructiveMigration() is the honest expression of this
- * project's current "pre-release, no real user data to preserve yet" stance, rather than an
- * unhandled crash on any device that already has an older database. Everything else in
- * this database is a rebuildable cache/import, never the original photos — write_log is
- * the first table where that's no longer quite true (losing it loses history, not just a
- * cache), worth keeping in mind if this policy is revisited before a real release.
+ * file's status, which on a fresh card is most of it, every single rescan. version 5 (was
+ * 4): added dawarich_track_point/dawarich_fetched_range (see [DawarichFetchedRangeEntity])
+ * — a rescan of an unchanged card was re-fetching the exact same Dawarich range from
+ * scratch every time; this is what lets a repeat scan skip the network entirely, the same
+ * way the v4 change did for the per-file EXIF read. No Migration is written for any bump —
+ * fallbackToDestructiveMigration() is the honest expression of this project's current
+ * "pre-release, no real user data to preserve yet" stance, rather than an unhandled crash
+ * on any device that already has an older database. Everything else in this database is a
+ * rebuildable cache/import, never the original photos — write_log is the first table
+ * where that's no longer quite true (losing it loses history, not just a cache), worth
+ * keeping in mind if this policy is revisited before a real release.
  */
 @Database(
     entities = [
         GeoTagCacheEntity::class,
         GpxImportedFileEntity::class,
         GpxTrackPointEntity::class,
-        WriteLogEntity::class
+        WriteLogEntity::class,
+        DawarichTrackPointEntity::class,
+        DawarichFetchedRangeEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -38,6 +44,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun geoTagCacheDao(): GeoTagCacheDao
     abstract fun gpxTrackDao(): GpxTrackDao
     abstract fun writeLogDao(): WriteLogDao
+    abstract fun dawarichCacheDao(): DawarichCacheDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null

@@ -6,6 +6,7 @@ import androidx.documentfile.provider.DocumentFile
 import com.olyphototagger.app.cache.AppDatabase
 import com.olyphototagger.app.cache.GeoTagCacheDao
 import com.olyphototagger.app.cache.WriteLogDao
+import com.olyphototagger.app.dawarich.CachingDawarichSource
 import com.olyphototagger.app.dawarich.DawarichClient
 import com.olyphototagger.app.dawarich.createDawarichHttpClient
 import com.olyphototagger.app.dcim.CameraFile
@@ -24,6 +25,7 @@ import com.olyphototagger.app.exiftool.ExifToolInvoker
 import com.olyphototagger.app.geotag.GeoInterpolator
 import com.olyphototagger.app.geotag.GeoMatch
 import com.olyphototagger.app.geotag.GpsSource
+import com.olyphototagger.app.geotag.TrackPoint
 import com.olyphototagger.app.gpx.GpxTrackSource
 import com.olyphototagger.app.settings.ActiveGpsSourceResolver
 import com.olyphototagger.app.settings.GpsSourceType
@@ -76,13 +78,11 @@ class GeotagOrchestrator(
      *   see [resolveStatusesConcurrently]'s doc. That's usually the slow part of a scan (a
      *   SAF file open per pair, worse over USB) — *usually*: the GPS-track fetch just below
      *   can take much longer than this whole phase when the included pairs' combined time
-     *   span is wide (an unfiltered whole-folder scan spanning weeks/months of untagged
-     *   photos, confirmed for real 2026-09-09 — see [com.olyphototagger.app.dawarich.
-     *   DawarichClient.fetchTrackPoints]'s own doc), which is exactly what [onTrackFetchProgress]
-     *   is for.
-     * @param onTrackFetchProgress cumulative points fetched so far for the track-fetch
-     *   step — see [com.olyphototagger.app.geotag.GpsSource.fetchTrackPoints]'s own doc for
-     *   why it's a running count rather than a completed/total pair.
+     *   span is wide, which is exactly what [onTrackFetchProgress] is for.
+     * @param onTrackFetchProgress cumulative points fetched so far across every cluster's
+     *   fetch — see [fetchClusteredTrack] and [com.olyphototagger.app.geotag.GpsSource.
+     *   fetchTrackPoints]'s own docs for why it's a running count rather than a
+     *   completed/total pair.
      */
     suspend fun scanForMatches(
         dcimRoot: DocumentFile,
@@ -98,19 +98,43 @@ class GeotagOrchestrator(
             return ScanResult(emptyList(), c.excluded, c.pairing.ignored, c.pairing.conflicts, c.scan::resolve)
         }
 
-        val start = c.included.minOf { it.second }
-        val end = c.included.maxOf { it.second }
-        val track = gpsSource.fetchTrackPoints(
-            start.minus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES),
-            end.plus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES),
-            onTrackFetchProgress
-        )
+        val track = fetchClusteredTrack(c.included.map { it.second }, onTrackFetchProgress)
 
         val matches = c.included.map { (pair, timestamp) ->
             ProposedMatch(pair, timestamp, geoInterpolator.match(timestamp, track))
         }
 
         return ScanResult(matches, c.excluded, c.pairing.ignored, c.pairing.conflicts, c.scan::resolve)
+    }
+
+    /**
+     * Fetches just enough GPS track to bracket every timestamp in [timestamps], not the
+     * single contiguous span from the earliest to the latest — those can be far apart with
+     * nothing but dead time in between (two photo sessions weeks apart on the same card is
+     * a real case, not a hypothetical one: confirmed live 2026-09-09 that an unfiltered
+     * whole-folder scan's naive [min, max] fetch came back as 3368 Dawarich pages / ~337k
+     * points for exactly that shape of card, ~65 minutes at Dawarich's own real per-page
+     * speed). [TimestampClustering] groups [timestamps] wherever a real gap separates them,
+     * and each cluster gets its own `[start, end]` fetch — a card with two sessions weeks
+     * apart now costs two *narrow* fetches, not one enormous one spanning the weeks between.
+     *
+     * [onProgress] reports a running total across every cluster's fetch, in cluster order —
+     * still a cumulative count, not completed/total, for the same reason [GpsSource.
+     * fetchTrackPoints] itself reports it that way.
+     */
+    suspend fun fetchClusteredTrack(
+        timestamps: List<Instant>,
+        onProgress: suspend (fetchedSoFar: Int) -> Unit = {}
+    ): List<TrackPoint> {
+        val track = mutableListOf<TrackPoint>()
+        for (cluster in TimestampClustering.cluster(timestamps)) {
+            val alreadyFetched = track.size
+            track += gpsSource.fetchTrackPoints(
+                cluster.first().minus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES),
+                cluster.last().plus(TRACK_FETCH_SLACK_MINUTES, ChronoUnit.MINUTES)
+            ) { fetchedInCluster -> onProgress(alreadyFetched + fetchedInCluster) }
+        }
+        return track.sortedBy { it.time }
     }
 
     /**
@@ -438,11 +462,17 @@ suspend fun buildGpsSource(context: Context): GpsSource? {
     val resolved = ActiveGpsSourceResolver.resolve(activeSource, hasDawarichConfig = dawarichConfig != null)
         ?: return null
     return when (resolved) {
-        GpsSourceType.DAWARICH -> DawarichClient(
-            createDawarichHttpClient(),
-            requireNotNull(dawarichConfig).baseUrl,
-            dawarichConfig.apiToken,
-            log = { message -> Log.d("DawarichClient", message) }
+        // Wrapped in the local cache — see CachingDawarichSource's own doc for why only
+        // this branch gets one (GpxTrackSource is already a fast local read).
+        GpsSourceType.DAWARICH -> CachingDawarichSource(
+            DawarichClient(
+                createDawarichHttpClient(),
+                requireNotNull(dawarichConfig).baseUrl,
+                dawarichConfig.apiToken,
+                log = { message -> Log.d("DawarichClient", message) }
+            ),
+            AppDatabase.getInstance(context).dawarichCacheDao(),
+            recentWindow = Duration.ofHours(settingsRepository.dawarichCacheRecentHours.first().toLong())
         )
         GpsSourceType.GPX -> GpxTrackSource(AppDatabase.getInstance(context).gpxTrackDao())
     }

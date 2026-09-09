@@ -58,7 +58,9 @@ fun SettingsScreen(
         onNavigateToGpsSources = onNavigateToGpsSources,
         onNavigateToChangeLog = onNavigateToChangeLog,
         onGapThresholdChange = viewModel::setGapThresholdMinutes,
-        onSave = viewModel::save
+        onDawarichCacheRecentHoursChange = viewModel::setDawarichCacheRecentHours,
+        onSave = viewModel::save,
+        onClearGpsCache = viewModel::clearGpsCache
     )
 }
 
@@ -71,7 +73,9 @@ private fun SettingsScreenContent(
     onNavigateToGpsSources: () -> Unit,
     onNavigateToChangeLog: () -> Unit,
     onGapThresholdChange: (String) -> Unit,
-    onSave: () -> Unit
+    onDawarichCacheRecentHoursChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onClearGpsCache: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -106,6 +110,26 @@ private fun SettingsScreenContent(
             )
             OutlinedButton(onClick = onNavigateToGpsSources, modifier = Modifier.fillMaxWidth()) {
                 Text("Manage GPS Sources")
+            }
+            Text(
+                "Points fetched from Dawarich are cached locally, so re-scanning the same " +
+                    "photos doesn't re-fetch them. An empty result only counts as final once " +
+                    "it's old enough, below — Dawarich may just not have synced the most " +
+                    "recent data yet. Clear the cache below if you've backfilled older " +
+                    "location data and want it picked up sooner.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedTextField(
+                value = uiState.dawarichCacheRecentHours,
+                onValueChange = onDawarichCacheRecentHoursChange,
+                label = { Text("Don't cache empty results younger than (hours)") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedButton(onClick = onClearGpsCache, modifier = Modifier.fillMaxWidth()) {
+                Text("Clear Cached GPS Data")
             }
 
             Text("Matching", style = MaterialTheme.typography.titleMedium)
@@ -173,9 +197,9 @@ private fun formatBuildTimestamp(): String =
 private fun SettingsScreenDefaultPreview() {
     OlyPhotoTaggerTheme(dynamicColor = false) {
         SettingsScreenContent(
-            uiState = SettingsUiState(gapThresholdMinutes = "5"),
+            uiState = SettingsUiState(gapThresholdMinutes = "5", dawarichCacheRecentHours = "24"),
             snackbarHostState = remember { SnackbarHostState() },
-            onBack = {}, onNavigateToGpsSources = {}, onNavigateToChangeLog = {}, onGapThresholdChange = {}, onSave = {}
+            onBack = {}, onNavigateToGpsSources = {}, onNavigateToChangeLog = {}, onGapThresholdChange = {}, onDawarichCacheRecentHoursChange = {}, onSave = {}, onClearGpsCache = {}
         )
     }
 }
@@ -185,9 +209,9 @@ private fun SettingsScreenDefaultPreview() {
 private fun SettingsScreenSavedPreview() {
     OlyPhotoTaggerTheme(dynamicColor = false) {
         SettingsScreenContent(
-            uiState = SettingsUiState(gapThresholdMinutes = "5", saveMessage = "Settings saved"),
+            uiState = SettingsUiState(gapThresholdMinutes = "5", dawarichCacheRecentHours = "24", saveMessage = "Settings saved"),
             snackbarHostState = remember { SnackbarHostState() },
-            onBack = {}, onNavigateToGpsSources = {}, onNavigateToChangeLog = {}, onGapThresholdChange = {}, onSave = {}
+            onBack = {}, onNavigateToGpsSources = {}, onNavigateToChangeLog = {}, onGapThresholdChange = {}, onDawarichCacheRecentHoursChange = {}, onSave = {}, onClearGpsCache = {}
         )
     }
 }
