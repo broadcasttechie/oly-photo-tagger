@@ -1,3 +1,7 @@
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -12,6 +16,17 @@ val nativePins: Map<String, String> = rootProject.file("native/PINS").readLines(
     .map { it.trim() }
     .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
     .associate { line -> line.substringBefore("=").trim() to line.substringAfter("=").trim() }
+
+// Captured once, at Gradle configuration time, so it reflects when this specific APK was
+// built — not installed or launched. VERSION_NAME alone can't tell two debug builds apart
+// (it doesn't change between rebuilds during a dev session); this is what does, and it's
+// what let us confirm on 2026-09-09 that a stale debug-signed install, not a bad download,
+// was behind an "App not installed" report. Fixed to UTC so it's unambiguous regardless of
+// which machine or device timezone it's read on.
+val buildTimestamp: String = DateTimeFormatter
+    .ofPattern("yyyy-MM-dd HH:mm")
+    .withZone(ZoneOffset.UTC)
+    .format(Instant.now())
 
 android {
     namespace = "com.olyphototagger.app"
@@ -30,6 +45,7 @@ android {
             "PERL5_ASSET_VERSION",
             nativePins.getValue("PERL5_ASSET_VERSION")
         )
+        buildConfigField("String", "BUILD_TIMESTAMP", "\"$buildTimestamp UTC\"")
 
         ndk {
             // Only arm64-v8a has been built via CI so far (native/build.sh all covers

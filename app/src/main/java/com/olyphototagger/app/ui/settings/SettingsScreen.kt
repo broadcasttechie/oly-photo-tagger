@@ -30,6 +30,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.olyphototagger.app.BuildConfig
 import com.olyphototagger.app.ui.theme.OlyPhotoTaggerTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -137,6 +138,21 @@ private fun SettingsScreenContent(
             OutlinedButton(onClick = onNavigateToChangeLog, modifier = Modifier.fillMaxWidth()) {
                 Text("View Change Log")
             }
+
+            // Distinguishes debug from release installs and, since VERSION_NAME/CODE don't
+            // change between debug rebuilds during a dev session, tells otherwise-identical
+            // debug builds apart — useful on its own and in bug-report screenshots.
+            Text("About", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Oly Photo Tagger ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}, ${BuildConfig.BUILD_TYPE})",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "Built ${BuildConfig.BUILD_TIMESTAMP}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
