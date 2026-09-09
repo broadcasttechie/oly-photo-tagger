@@ -19,7 +19,11 @@ import androidx.room.RoomDatabase
  * 4): added dawarich_track_point/dawarich_fetched_range (see [DawarichFetchedRangeEntity])
  * — a rescan of an unchanged card was re-fetching the exact same Dawarich range from
  * scratch every time; this is what lets a repeat scan skip the network entirely, the same
- * way the v4 change did for the per-file EXIF read. No Migration is written for any bump —
+ * way the v4 change did for the per-file EXIF read. version 6 (was 5): added address_cache
+ * (see [AddressCacheEntity]) — reverse-geocoded addresses, keyed by a coarse coordinate
+ * bucket rather than exact lat/lon, so nearby photos from the same outing share one
+ * lookup instead of one each; see [com.olyphototagger.app.geocode.AddressResolver]. No
+ * Migration is written for any bump —
  * fallbackToDestructiveMigration() is the honest expression of this project's current
  * "pre-release, no real user data to preserve yet" stance, rather than an unhandled crash
  * on any device that already has an older database. Everything else in this database is a
@@ -34,9 +38,10 @@ import androidx.room.RoomDatabase
         GpxTrackPointEntity::class,
         WriteLogEntity::class,
         DawarichTrackPointEntity::class,
-        DawarichFetchedRangeEntity::class
+        DawarichFetchedRangeEntity::class,
+        AddressCacheEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -45,6 +50,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun gpxTrackDao(): GpxTrackDao
     abstract fun writeLogDao(): WriteLogDao
     abstract fun dawarichCacheDao(): DawarichCacheDao
+    abstract fun addressCacheDao(): AddressCacheDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null

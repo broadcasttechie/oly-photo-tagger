@@ -80,4 +80,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             _events.tryEmit("Cached GPS data cleared")
         }
     }
+
+    /** Manual escape hatch for [com.olyphototagger.app.geocode.AddressResolver]'s cache —
+     *  see its own button's supporting text on this screen for why there's normally no
+     *  real need for this, unlike [clearGpsCache]. */
+    fun clearAddressCache() {
+        viewModelScope.launch {
+            AppDatabase.getInstance(getApplication()).addressCacheDao().clear()
+            _events.tryEmit("Cached addresses cleared")
+        }
+    }
 }

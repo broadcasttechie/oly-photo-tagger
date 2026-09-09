@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.olyphototagger.app.dcim.PhotoPair
 import com.olyphototagger.app.dcim.identityKey
+import com.olyphototagger.app.geocode.AddressResolver
 import com.olyphototagger.app.geotag.GeoMatch
 import com.olyphototagger.app.image.ThumbnailImageLoader
 import com.olyphototagger.app.image.osmTileRequest
@@ -278,8 +280,13 @@ private fun MatchedRow(
             PhotoThumbnail(scanResult, match.pair)
             Column(Modifier.padding(vertical = 2.dp).weight(1f)) {
                 Text(match.pair.baseName, style = MaterialTheme.typography.bodyMedium)
+                // Coordinates show immediately; rememberAddress swaps in a real address
+                // once it resolves (near-instant on a cache hit, a background wait on a
+                // genuine miss — see its own doc) rather than this row waiting on it.
+                val address = rememberAddress(geo.latitude, geo.longitude)
+                val locationText = address ?: "%.4f, %.4f".format(geo.latitude, geo.longitude)
                 Text(
-                    "${formatCaptureTime(match.timestamp)} · %.4f, %.4f".format(geo.latitude, geo.longitude),
+                    "${formatCaptureTime(match.timestamp)} · $locationText",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -376,6 +383,37 @@ private fun ExcludedRow(excluded: ExcludedPair) {
 
 private fun formatCaptureTime(instant: Instant): String =
     DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm").withZone(ZoneId.systemDefault()).format(instant)
+
+/**
+ * Null until resolved — "resolved" usually means "an already-cached bucket," which
+ * [AddressResolver.resolve] answers from a plain local Room read, fast enough that a
+ * caller rarely even notices the null moment in between. A genuine cache miss instead
+ * takes as long as its turn in [AddressResolver]'s rate-limited queue does — this row
+ * just keeps showing coordinates until then, never blocking anything.
+ *
+ * Keyed on (latitude, longitude): a recycled LazyColumn row whose underlying photo
+ * changes gets a fresh lookup rather than briefly showing the previous row's stale
+ * address, and a row that scrolls away mid-lookup has that lookup cancelled for free
+ * (LaunchedEffect leaves composition -> its coroutine is cancelled -> see
+ * [AddressResolver]'s own doc for why that's a real, clean cancellation, not a leak).
+ */
+@Composable
+private fun rememberAddress(latitude: Double, longitude: Double): String? {
+    val context = LocalContext.current
+    var address by remember(latitude, longitude) { mutableStateOf<String?>(null) }
+    LaunchedEffect(latitude, longitude) {
+        address = AddressResolver.get(context).resolve(latitude, longitude)
+    }
+    return address?.let(::shortenAddress)
+}
+
+/** Nominatim's display_name is a full address, often 6+ comma-separated parts and too
+ *  wide for a compact list row ("10 Downing Street, Westminster, London, Greater London,
+ *  England, SW1A 2AA, United Kingdom") — the first two parts are normally enough to place
+ *  a photo at a glance ("10 Downing Street, Westminster"). The full string is still what's
+ *  cached; only display trims it, so a future change here doesn't need a cache reset. */
+private fun shortenAddress(fullAddress: String): String =
+    fullAddress.split(",").take(2).joinToString(", ") { it.trim() }
 
 @Preview(showBackground = true, name = "Mixed results")
 @Composable

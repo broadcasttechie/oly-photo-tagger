@@ -58,7 +58,8 @@ fun SettingsScreen(
         onGapThresholdChange = viewModel::setGapThresholdMinutes,
         onDawarichCacheRecentHoursChange = viewModel::setDawarichCacheRecentHours,
         onSave = viewModel::save,
-        onClearGpsCache = viewModel::clearGpsCache
+        onClearGpsCache = viewModel::clearGpsCache,
+        onClearAddressCache = viewModel::clearAddressCache
     )
 }
 
@@ -72,7 +73,8 @@ private fun SettingsScreenContent(
     onGapThresholdChange: (String) -> Unit,
     onDawarichCacheRecentHoursChange: (String) -> Unit,
     onSave: () -> Unit,
-    onClearGpsCache: () -> Unit
+    onClearGpsCache: () -> Unit,
+    onClearAddressCache: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -127,6 +129,17 @@ private fun SettingsScreenContent(
             )
             OutlinedButton(onClick = onClearGpsCache, modifier = Modifier.fillMaxWidth()) {
                 Text("Clear Cached GPS Data")
+            }
+            Text(
+                "The dry-run preview shows a real address for each match instead of " +
+                    "raw coordinates, looked up in the background and cached — addresses " +
+                    "essentially never change, so unlike GPS data there's normally no " +
+                    "reason to clear this.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedButton(onClick = onClearAddressCache, modifier = Modifier.fillMaxWidth()) {
+                Text("Clear Cached Addresses")
             }
 
             Text("Matching", style = MaterialTheme.typography.titleMedium)
@@ -186,7 +199,7 @@ private fun SettingsScreenDefaultPreview() {
         SettingsScreenContent(
             uiState = SettingsUiState(gapThresholdMinutes = "5", dawarichCacheRecentHours = "24"),
             snackbarHostState = remember { SnackbarHostState() },
-            onBack = {}, onNavigateToGpsSources = {}, onGapThresholdChange = {}, onDawarichCacheRecentHoursChange = {}, onSave = {}, onClearGpsCache = {}
+            onBack = {}, onNavigateToGpsSources = {}, onGapThresholdChange = {}, onDawarichCacheRecentHoursChange = {}, onSave = {}, onClearGpsCache = {}, onClearAddressCache = {}
         )
     }
 }
@@ -198,7 +211,7 @@ private fun SettingsScreenSavedPreview() {
         SettingsScreenContent(
             uiState = SettingsUiState(gapThresholdMinutes = "5", dawarichCacheRecentHours = "24", saveMessage = "Settings saved"),
             snackbarHostState = remember { SnackbarHostState() },
-            onBack = {}, onNavigateToGpsSources = {}, onGapThresholdChange = {}, onDawarichCacheRecentHoursChange = {}, onSave = {}, onClearGpsCache = {}
+            onBack = {}, onNavigateToGpsSources = {}, onGapThresholdChange = {}, onDawarichCacheRecentHoursChange = {}, onSave = {}, onClearGpsCache = {}, onClearAddressCache = {}
         )
     }
 }
