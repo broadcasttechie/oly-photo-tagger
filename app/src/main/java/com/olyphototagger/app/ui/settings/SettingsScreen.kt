@@ -32,6 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.olyphototagger.app.BuildConfig
 import com.olyphototagger.app.ui.theme.OlyPhotoTaggerTheme
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -149,13 +152,21 @@ private fun SettingsScreenContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                "Built ${BuildConfig.BUILD_TIMESTAMP}",
+                "Built ${formatBuildTimestamp()}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
 }
+
+/** The viewer's own local time — see the field's own doc in build.gradle.kts for why the
+ *  raw instant, not a pre-formatted string, is what actually crosses the BuildConfig
+ *  boundary. */
+private fun formatBuildTimestamp(): String =
+    DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm")
+        .withZone(ZoneId.systemDefault())
+        .format(Instant.ofEpochMilli(BuildConfig.BUILD_TIMESTAMP_EPOCH_MILLIS))
 
 @Preview(showBackground = true, name = "Default")
 @Composable
