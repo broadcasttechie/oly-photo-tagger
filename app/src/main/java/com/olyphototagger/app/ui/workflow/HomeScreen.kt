@@ -6,18 +6,27 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -25,6 +34,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -224,49 +234,60 @@ private fun HomeScreenContent(
             }
         }
     ) { padding ->
+        var optionsExpanded by remember { mutableStateOf(false) }
+
+        // Flat rows + hairline dividers instead of a card per section — five stacked
+        // Cards (16dp internal padding, 16dp between) was the main reason this screen
+        // needed a scroll to reach the button below at all. Only the two genuinely
+        // optional, occasional-use sections (prescan, date range) fold into Options,
+        // collapsed by default; Folder and Camera offset are needed on every run, so
+        // they stay always-visible but each now costs one compact row, not a card.
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 16.dp)
+                .verticalScroll(rememberScrollState())
         ) {
             if (uiState.pendingRecoveries.isNotEmpty()) {
+                Spacer(Modifier.size(16.dp))
                 RecoveryBanner(count = uiState.pendingRecoveries.size, onClick = onNavigateToRecovery)
             }
 
-            FolderCard(
-                displayName = uiState.rootDisplayName,
-                onPick = onPickFolder
-            )
-
-            PreScanCard(
-                enabled = uiState.canScan,
-                summary = uiState.preScanSummary,
-                onPreScan = onPreScan
-            )
-
-            DateRangeCard(
-                start = uiState.dateRangeStart,
-                end = uiState.dateRangeEnd,
-                onStartChange = { onDateRangeChange(it, uiState.dateRangeEnd) },
-                onEndChange = { onDateRangeChange(uiState.dateRangeStart, it) }
-            )
-
-            CameraOffsetCard(
+            Spacer(Modifier.size(8.dp))
+            FolderRow(displayName = uiState.rootDisplayName, onPick = onPickFolder)
+            HorizontalDivider()
+            CameraOffsetRow(
                 offsetSeconds = uiState.cameraOffsetSeconds,
                 onLoadLocal = onLoadLocalOffset,
                 onAdjustHours = onAdjustOffsetHours,
                 onSetOffsetSeconds = onSetOffsetSeconds
             )
+            HorizontalDivider()
+            OptionsSection(
+                expanded = optionsExpanded,
+                onToggleExpanded = { optionsExpanded = !optionsExpanded },
+                prescanEnabled = uiState.canScan,
+                prescanSummary = uiState.preScanSummary,
+                onPreScan = onPreScan,
+                dateRangeStart = uiState.dateRangeStart,
+                dateRangeEnd = uiState.dateRangeEnd,
+                onDateStartChange = { onDateRangeChange(it, uiState.dateRangeEnd) },
+                onDateEndChange = { onDateRangeChange(uiState.dateRangeStart, it) }
+            )
+            HorizontalDivider()
 
             Button(
                 onClick = onDryRun,
                 enabled = uiState.canScan,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 16.dp)
             ) {
-                Text("Preview Changes (Dry Run)")
+                Text("Preview changes")
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    modifier = Modifier.padding(start = 8.dp).size(18.dp)
+                )
             }
         }
     }
@@ -385,7 +406,7 @@ private fun HomeScreenScanProgressPreview() {
 @Composable
 private fun AdvancedOffsetDialogPreview() {
     OlyPhotoTaggerTheme(dynamicColor = false) {
-        AdvancedOffsetDialog(initialOffsetSeconds = 3_667, onDismiss = {}, onConfirm = {})
+        AdvancedOffsetDialog(initialOffsetSeconds = 3_667, onUseLocal = {}, onDismiss = {}, onConfirm = {})
     }
 }
 
@@ -415,64 +436,122 @@ private fun RecoveryBanner(count: Int, onClick: () -> Unit) {
     }
 }
 
+/** One compact row rather than a titled card — the folder is required on every run, so
+ *  it stays always-visible, but doesn't need a card's weight to say so. */
 @Composable
-private fun FolderCard(displayName: String?, onPick: () -> Unit) {
-    Card {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Photo folder", style = MaterialTheme.typography.titleMedium)
-            Text(
-                displayName ?: "No folder selected — pick the camera's DCIM folder",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            OutlinedButton(onClick = onPick) {
-                Text(if (displayName == null) "Select Folder" else "Change Folder")
-            }
+private fun FolderRow(displayName: String?, onPick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Text(
+            displayName ?: "No folder selected",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f)
+        )
+        TextButton(onClick = onPick) {
+            Text(if (displayName == null) "Select" else "Change")
         }
     }
 }
 
+/**
+ * Both the optional prescan and the optional date-range filter live here, collapsed by
+ * default — folded together specifically because neither is needed on a typical run
+ * (the default "process the whole folder, write everything untagged" path uses neither),
+ * so showing them permanently expanded cost more scroll than the two features together
+ * are worth on every single visit to this screen.
+ */
 @Composable
-private fun PreScanCard(enabled: Boolean, summary: PreScanSummary?, onPreScan: () -> Unit) {
-    Card {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Check before running (optional)", style = MaterialTheme.typography.titleMedium)
-            OutlinedButton(onClick = onPreScan, enabled = enabled) {
-                Text("Check for Untagged Photos")
-            }
-            if (summary != null) {
-                Text("Needs tagging: ${summary.needsTagging}")
-                Text("Already tagged: ${summary.alreadyTagged}")
-                if (summary.noTimestamp > 0) Text("Missing timestamp: ${summary.noTimestamp}")
-                if (summary.outsideDateRange > 0) Text("Outside date range: ${summary.outsideDateRange}")
-                if (summary.conflicts > 0) Text("Ambiguous duplicates: ${summary.conflicts}")
-            }
-        }
-    }
-}
-
-@Composable
-private fun DateRangeCard(
-    start: Instant?,
-    end: Instant?,
-    onStartChange: (Instant?) -> Unit,
-    onEndChange: (Instant?) -> Unit
+private fun OptionsSection(
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    prescanEnabled: Boolean,
+    prescanSummary: PreScanSummary?,
+    onPreScan: () -> Unit,
+    dateRangeStart: Instant?,
+    dateRangeEnd: Instant?,
+    onDateStartChange: (Instant?) -> Unit,
+    onDateEndChange: (Instant?) -> Unit
 ) {
-    Card {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Limit to a time range (optional)", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Leave unset to process the whole folder.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onToggleExpanded).padding(vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(Icons.Default.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.weight(1f)) {
+                Text("Options", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Pre-check, date range",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = if (expanded) "Collapse" else "Expand",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            DateTimeField(label = "From", value = start, onValueChange = onStartChange)
-            DateTimeField(label = "To", value = end, onValueChange = onEndChange)
+        }
+
+        if (expanded) {
+            Column(
+                modifier = Modifier.padding(start = 32.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    OutlinedButton(onClick = onPreScan, enabled = prescanEnabled) {
+                        Text("Check for Untagged Photos")
+                    }
+                    if (prescanSummary != null) {
+                        Text(
+                            "Needs tagging: ${prescanSummary.needsTagging}   " +
+                                "Already tagged: ${prescanSummary.alreadyTagged}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (prescanSummary.noTimestamp > 0) {
+                            SummaryDetailText("Missing timestamp: ${prescanSummary.noTimestamp}")
+                        }
+                        if (prescanSummary.outsideDateRange > 0) {
+                            SummaryDetailText("Outside date range: ${prescanSummary.outsideDateRange}")
+                        }
+                        if (prescanSummary.conflicts > 0) {
+                            SummaryDetailText("Ambiguous duplicates: ${prescanSummary.conflicts}")
+                        }
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Time range — leave unset to process the whole folder",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    DateTimeField(label = "From", value = dateRangeStart, onValueChange = onDateStartChange)
+                    DateTimeField(label = "To", value = dateRangeEnd, onValueChange = onDateEndChange)
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun CameraOffsetCard(
+private fun SummaryDetailText(text: String) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/**
+ * One row rather than a card with a headline-sized number, a paragraph of explanation,
+ * and a three-button row — tapping the offset value itself now opens [AdvancedOffsetDialog]
+ * (which also carries "use phone's local time", moved there from its own row-width button)
+ * rather than needing a separate "Advanced…" link taking its own line.
+ */
+@Composable
+private fun CameraOffsetRow(
     offsetSeconds: Int,
     onLoadLocal: () -> Unit,
     onAdjustHours: (Int) -> Unit,
@@ -480,30 +559,40 @@ private fun CameraOffsetCard(
 ) {
     var showAdvanced by remember { mutableStateOf(false) }
 
-    Card {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Camera clock offset from UTC", style = MaterialTheme.typography.titleMedium)
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(
+            Icons.Default.Schedule,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(end = 8.dp)
+        )
+        Column(Modifier.weight(1f)) {
+            Text("Camera clock offset", style = MaterialTheme.typography.bodyMedium)
             Text(
-                "Most cameras don't record their timezone — this tells the app what the " +
-                    "camera's clock actually meant. Defaults to what you used last time.",
+                "From UTC",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Text(formatOffset(offsetSeconds), style = MaterialTheme.typography.headlineSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { onAdjustHours(-1) }) { Text("-1h") }
-                OutlinedButton(onClick = onLoadLocal) { Text("Use phone's local time") }
-                OutlinedButton(onClick = { onAdjustHours(1) }) { Text("+1h") }
-            }
-            TextButton(onClick = { showAdvanced = true }, modifier = Modifier.align(Alignment.End)) {
-                Text("Advanced…")
-            }
+        }
+        IconButton(onClick = { onAdjustHours(-1) }, modifier = Modifier.size(32.dp)) {
+            Text("−", style = MaterialTheme.typography.titleMedium)
+        }
+        TextButton(onClick = { showAdvanced = true }) {
+            Text(formatOffset(offsetSeconds), style = MaterialTheme.typography.bodyMedium)
+        }
+        IconButton(onClick = { onAdjustHours(1) }, modifier = Modifier.size(32.dp)) {
+            Text("+", style = MaterialTheme.typography.titleMedium)
         }
     }
 
     if (showAdvanced) {
         AdvancedOffsetDialog(
             initialOffsetSeconds = offsetSeconds,
+            onUseLocal = onLoadLocal,
             onDismiss = { showAdvanced = false },
             onConfirm = {
                 onSetOffsetSeconds(it)
@@ -524,6 +613,7 @@ private fun CameraOffsetCard(
 @Composable
 private fun AdvancedOffsetDialog(
     initialOffsetSeconds: Int,
+    onUseLocal: () -> Unit,
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit
 ) {
@@ -551,6 +641,11 @@ private fun AdvancedOffsetDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                TextButton(onClick = onUseLocal, contentPadding = PaddingValues(0.dp)) {
+                    Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.size(4.dp))
+                    Text("Use phone's local time", style = MaterialTheme.typography.bodySmall)
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SignToggleButton(
                         label = "Ahead (+)",

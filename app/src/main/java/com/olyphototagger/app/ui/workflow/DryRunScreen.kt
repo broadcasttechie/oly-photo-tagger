@@ -212,25 +212,25 @@ private fun SectionHeader(text: String) {
     HorizontalDivider()
 }
 
+// Two lines per row, not three — coordinates moved onto the same line as the capture
+// time rather than a line of their own. A dry-run batch can run into the hundreds or
+// thousands of rows (see the 1000-photo stress test), so this row height compounds a
+// lot more than it looks like it should from any one row in isolation.
 @Composable
 private fun MatchedRow(match: ProposedMatch, selected: Boolean, onToggle: () -> Unit) {
     val geo = match.geoMatch as GeoMatch.Matched
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .toggleable(value = selected, onValueChange = { onToggle() }, role = Role.Checkbox),
+            .toggleable(value = selected, onValueChange = { onToggle() }, role = Role.Checkbox)
+            .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Checkbox(checked = selected, onCheckedChange = null)
-        Column(Modifier.padding(vertical = 4.dp)) {
+        Column(Modifier.padding(vertical = 2.dp)) {
             Text(match.pair.baseName, style = MaterialTheme.typography.bodyMedium)
             Text(
-                formatCaptureTime(match.timestamp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                "%.6f, %.6f".format(geo.latitude, geo.longitude),
+                "${formatCaptureTime(match.timestamp)} · %.4f, %.4f".format(geo.latitude, geo.longitude),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -240,14 +240,13 @@ private fun MatchedRow(match: ProposedMatch, selected: Boolean, onToggle: () -> 
 
 @Composable
 private fun SkippedRow(match: ProposedMatch, reason: String) {
-    Column(Modifier.padding(vertical = 4.dp)) {
+    Column(Modifier.padding(vertical = 2.dp)) {
         Text(match.pair.baseName, style = MaterialTheme.typography.bodyMedium)
         Text(
-            formatCaptureTime(match.timestamp),
+            "${formatCaptureTime(match.timestamp)} · $reason",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.error
         )
-        Text(reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
 }
 
