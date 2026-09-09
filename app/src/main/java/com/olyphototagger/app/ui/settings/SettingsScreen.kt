@@ -41,8 +41,7 @@ import java.time.format.DateTimeFormatter
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBack: () -> Unit,
-    onNavigateToGpsSources: () -> Unit,
-    onNavigateToChangeLog: () -> Unit
+    onNavigateToGpsSources: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -56,7 +55,6 @@ fun SettingsScreen(
         snackbarHostState = snackbarHostState,
         onBack = onBack,
         onNavigateToGpsSources = onNavigateToGpsSources,
-        onNavigateToChangeLog = onNavigateToChangeLog,
         onGapThresholdChange = viewModel::setGapThresholdMinutes,
         onDawarichCacheRecentHoursChange = viewModel::setDawarichCacheRecentHours,
         onSave = viewModel::save,
@@ -71,7 +69,6 @@ private fun SettingsScreenContent(
     snackbarHostState: SnackbarHostState,
     onBack: () -> Unit,
     onNavigateToGpsSources: () -> Unit,
-    onNavigateToChangeLog: () -> Unit,
     onGapThresholdChange: (String) -> Unit,
     onDawarichCacheRecentHoursChange: (String) -> Unit,
     onSave: () -> Unit,
@@ -156,16 +153,6 @@ private fun SettingsScreenContent(
                 Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
             }
 
-            Text("Activity", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Review every write attempt this app has made — what was tagged, skipped, or failed, and why.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            OutlinedButton(onClick = onNavigateToChangeLog, modifier = Modifier.fillMaxWidth()) {
-                Text("View Change Log")
-            }
-
             // Distinguishes debug from release installs and, since VERSION_NAME/CODE don't
             // change between debug rebuilds during a dev session, tells otherwise-identical
             // debug builds apart — useful on its own and in bug-report screenshots.
@@ -199,7 +186,7 @@ private fun SettingsScreenDefaultPreview() {
         SettingsScreenContent(
             uiState = SettingsUiState(gapThresholdMinutes = "5", dawarichCacheRecentHours = "24"),
             snackbarHostState = remember { SnackbarHostState() },
-            onBack = {}, onNavigateToGpsSources = {}, onNavigateToChangeLog = {}, onGapThresholdChange = {}, onDawarichCacheRecentHoursChange = {}, onSave = {}, onClearGpsCache = {}
+            onBack = {}, onNavigateToGpsSources = {}, onGapThresholdChange = {}, onDawarichCacheRecentHoursChange = {}, onSave = {}, onClearGpsCache = {}
         )
     }
 }
@@ -211,7 +198,7 @@ private fun SettingsScreenSavedPreview() {
         SettingsScreenContent(
             uiState = SettingsUiState(gapThresholdMinutes = "5", dawarichCacheRecentHours = "24", saveMessage = "Settings saved"),
             snackbarHostState = remember { SnackbarHostState() },
-            onBack = {}, onNavigateToGpsSources = {}, onNavigateToChangeLog = {}, onGapThresholdChange = {}, onDawarichCacheRecentHoursChange = {}, onSave = {}, onClearGpsCache = {}
+            onBack = {}, onNavigateToGpsSources = {}, onGapThresholdChange = {}, onDawarichCacheRecentHoursChange = {}, onSave = {}, onClearGpsCache = {}
         )
     }
 }

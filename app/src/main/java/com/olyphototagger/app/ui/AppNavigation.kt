@@ -83,7 +83,8 @@ fun AppNavigation(
                 onNavigateToDryRun = { navController.navigate(AppRoute.DRY_RUN) },
                 onNavigateToSettings = { navController.navigate(AppRoute.SETTINGS) },
                 onNavigateToGpsSources = { navController.navigate(AppRoute.GPS_SOURCES) },
-                onNavigateToRecovery = { navController.navigate(AppRoute.RECOVERY) }
+                onNavigateToRecovery = { navController.navigate(AppRoute.RECOVERY) },
+                onNavigateToChangeLog = { navController.navigate(AppRoute.CHANGE_LOG) }
             )
         }
         composable(AppRoute.DRY_RUN) {
@@ -119,8 +120,7 @@ fun AppNavigation(
             SettingsScreen(
                 viewModel = settingsViewModel,
                 onBack = { navController.popBackStack() },
-                onNavigateToGpsSources = { navController.navigate(AppRoute.GPS_SOURCES) },
-                onNavigateToChangeLog = { navController.navigate(AppRoute.CHANGE_LOG) }
+                onNavigateToGpsSources = { navController.navigate(AppRoute.GPS_SOURCES) }
             )
         }
         composable(AppRoute.CHANGE_LOG) {
